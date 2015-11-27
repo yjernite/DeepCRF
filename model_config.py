@@ -15,7 +15,8 @@ def base_rnn_config(input_features, l1_list, tag_list):
 
 def base_convo_config(input_features, l1_list, tag_list):
     return Config(input_features=input_features, l1_list=l1_list,
-                  tag_list=tag_list, use_convo=True)
+                  tag_list=tag_list, use_convo=True,
+                  num_epochs=15, num_predict=5, pred_window=3)
 
 # file locations
 git_dir = '/home/jernite/Code/DeepCRF'
@@ -36,4 +37,4 @@ features = ['word', 'lemma', 'pos', 'normal', 'word_length',
 
 input_features = ['lemma', 'prefix', 'suffix', 'pos', 'umls_match_tag_full']
 l1_list = ['lemma', 'prefix', 'suffix']
-tag_list = ['P', 'B', 'I', 'O', 'ID', 'OD']
+tag_list = ['<P>', 'B', 'I', 'O', 'ID', 'OD']
