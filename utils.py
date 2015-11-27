@@ -88,7 +88,7 @@ class Config:
 
 
 def aggregate_labels(sentence, config):
-    pre_tags = ['P'] * (config.pred_window / 2)
+    pre_tags = ['<P>'] * (config.pred_window / 2)
     sentence_ext = pre_tags + [token['label']
                                for token in sentence] + pre_tags
     for i, token in enumerate(sentence):
