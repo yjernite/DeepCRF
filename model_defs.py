@@ -307,9 +307,4 @@ def train_model(train_data, dev_data, inputs, targets, train_step, accuracy,
         accuracies += [(train_acc, dev_acc)]
         if i % config.num_predict == config.num_predict - 1:
             preds[i+1] = tag_dataset(dev_data, config, params, graph)
-            predictions = [fuse_preds(sent, pred, config)
-                           for sent, pred in zip(dev_data, preds[i+1])]
-            merged = merge(predictions, dev_spans)
-            for i in range(10):
-                evaluate(merged, 0.1 * i)
     return (accuracies, preds)
