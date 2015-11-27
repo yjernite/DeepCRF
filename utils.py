@@ -10,17 +10,14 @@ def valid_tag(tag_tup):
     ln = len(tag_tup)
     mid = ln / 2
     if '<P>' in tag_tup:
-        for i, t in enumerate(tag_tup[1:-1]):
-            if t == '<P>':
-                if tag_tup[mid] == '<P>':
+        if tag_tup[mid] == '<P>':
                     return False
-                else:
-                    ct_a = tag_tup[:mid].count('<P>')
-                    ct_b = tag_tup[mid + 1:].count('<P>')
-                    if ((ct_a == mid and ct_b == 0) or
-                       (ct_b == mid and ct_a == 0)):
-                        return True
-                return False
+        else:
+            ct_a = tag_tup[:mid].count('<P>')
+            ct_b = tag_tup[mid + 1:].count('<P>')
+            if ((ct_a == mid and ct_b == 0) or (ct_b == mid and ct_a == 0)):
+                return True
+            return False
     return True
 
 
@@ -144,13 +141,13 @@ def read_vectors(file_name, vocab):
 # extract windows from data to fit into unrolled RNN
 def cut_and_pad(data, num_steps, config):
     pad_token = dict([(feat, '_unk_') for feat in data[0][0]])
-    pad_token['label'] = '_'.join(['P'] * config.pred_window)
+    pad_token['label'] = '_'.join(['<P>'] * config.pred_window)
     res = []
     seen = 0
     sen = [pad_token] + data[0] + [pad_token]
     while seen < len(data):
         if len(sen) < num_steps:
-            if sen[0]['label'] == 'P':
+            if sen[0]['label'] == '<P>':
                 new_sen = ((num_steps - len(sen)) / 2) * [pad_token] + sen
             else:
                 new_sen = sen
@@ -295,3 +292,31 @@ def merge(sentences, spans):
             span = spans[i]
     res += [(sent, span)]
     return res
+
+
+def evaluate(merged_sentences, threshold):
+    TP = 0
+    FP = 0
+    FN = 0
+    for sentence in merged_sentences:
+        true_mentions = sentence[0][1]
+        tp = 0
+        for pred in sentence[0][2]:
+            if pred[1] >= threshold:
+                if pred[0] in true_mentions:
+                    tp += 1
+                else:
+                    FP += 1
+        TP += tp
+        FN += len(true_mentions) - tp
+    if (TP + FP) == 0:
+        prec = 0
+        recall = 0
+    else:
+        prec = float(TP) / (TP + FP)
+        recall = float(TP) / (TP + FN)
+    if prec == 0 or recall == 0:
+        f1 = 0
+    else:
+        f1 =  2 * (prec * recall) / (prec + recall)
+    print 'TH:', threshold, '\t', 'P:', prec, '\t', 'R:', recall, '\t', 'F:', f1
