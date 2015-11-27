@@ -1,3 +1,5 @@
+from pprint import pprint
+
 from model_config import *
 from model_defs import *
 
