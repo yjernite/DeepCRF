@@ -31,7 +31,7 @@ class Config:
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
                  use_convo=False, conv_window=5, conv_dim=50,
                  pred_window=1, tag_list=[],
-                 verbose=False, num_epochs=20, num_predict=5):
+                 verbose=False, num_epochs=10, num_predict=5):
         # optimization parameters
         self.batch_size = batch_size
         self.num_steps = num_steps
@@ -101,7 +101,6 @@ def aggregate_labels(sentence, config):
 
 
 def read_data(file_name, features, config):
-    gc.disable()
     sentences = []
     sentence = []
     f = open(file_name)
@@ -118,7 +117,6 @@ def read_data(file_name, features, config):
     if len(sentence) > 0:
         sentences += [sentence[:]]
     f.close()
-    gc.enable()
     foo = [aggregate_labels(sentence, config) for sentence in sentences]
     return sentences
 
@@ -170,7 +168,7 @@ def cut_and_pad(data, num_steps, config):
 # make a batch: batch_size x num_steps x num_features
 def make_batch(data, start, config, fill=False):
     batch_size = config.batch_size
-    features_list = config.in_features
+    features_list = config.input_features
     n_outcomes = config.n_outcomes
     feature_mappings = config.feature_maps
     label_dict = config.label_dict
@@ -204,6 +202,21 @@ def make_batch(data, start, config, fill=False):
 ###############################################
 # NN evaluation functions                     #
 ###############################################
+def treat_spans(spans_file):
+    span_lists = []
+    f = open(spans_file)
+    y = []
+    for line in f:
+        if line.strip() == '':
+            span_lists += [y[:]]
+            y = []
+        else:
+            lsp = line.strip().split()
+            y = y + [(int(lsp[0]), int(lsp[1]), lsp[2])]
+    f.close()
+    return span_lists
+
+
 def find_gold(sentence):
     gold = []
     current_gold = []

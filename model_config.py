@@ -1,4 +1,5 @@
-# All the model arguments / parameters in one file
+# All the model arguments / parameters / file locations in one file
+from os.path import join as pjoin
 from utils import *
 
 
@@ -9,7 +10,7 @@ def base_config(input_features, l1_list, tag_list):
 
 def base_rnn_config(input_features, l1_list, tag_list):
     return Config(input_features=input_features, l1_list=l1_list,
-                  tag_list=tag_list use_rnn=True)
+                  tag_list=tag_list, use_rnn=True)
 
 
 def base_convo_config(input_features, l1_list, tag_list):
@@ -23,8 +24,8 @@ train_file = pjoin(git_dir, 'Data/semeval_train/crfpp_text_batch_1.txt')
 dev_file = pjoin(git_dir, 'Data/semeval_dev/crfpp_text_batch_1.txt')
 vecs_file = pjoin(git_dir, 'Data/semeval_vecs.dat')
 
-train_spans_file = pjoin(train_dir, 'crfpp_spans_batch_1.txt')
-dev_spans_file = pjoin(dev_dir, 'crfpp_spans_batch_1.txt')
+train_spans_file = pjoin(git_dir, 'Data/semeval_train/crfpp_spans_batch_1.txt')
+dev_spans_file = pjoin(git_dir, 'Data/semeval_dev/crfpp_spans_batch_1.txt')
 
 # feature names and tag list
 features = ['word', 'lemma', 'pos', 'normal', 'word_length',

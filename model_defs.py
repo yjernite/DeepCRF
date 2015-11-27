@@ -7,7 +7,7 @@ from tensorflow.models.rnn import rnn
 from tensorflow.models.rnn import rnn_cell
 
 from bi_rnn import bi_rnn
-
+from utils import *
 
 ###############################################
 # NN creation functions                       #
@@ -45,7 +45,7 @@ def bias_variable(shape, name='weight'):
 
 
 def feature_layer(config, params, reuse=False):
-    in_features = config.in_features
+    in_features = config.input_features
     features_dim = config.features_dim
     batch_size = config.batch_size
     num_steps = config.num_steps
@@ -194,10 +194,7 @@ def make_network(config, params, reuse=False, name='Model'):
 ###############################################
 # NN usage functions                          #
 ###############################################
-def train_epoch(data, inputs, targets, train_step, accuracy, config):
-    input_features = config.in_features
-    feature_mappings = config.feature_maps
-    label_dict = config.label_dict
+def train_epoch(data, inputs, targets, train_step, accuracy, config, params):
     batch_size = int(inputs.get_shape()[0])
     n_outcomes = int(targets.get_shape()[2])
     for i in range(len(data) / batch_size):
@@ -212,9 +209,6 @@ def train_epoch(data, inputs, targets, train_step, accuracy, config):
 
 
 def validate_accuracy(data, inputs, targets, accuracy, config):
-    input_features = config.in_features
-    feature_mappings = config.feature_maps
-    label_dict = config.label_dict
     batch_size = int(inputs.get_shape()[0])
     n_outcomes = int(targets.get_shape()[2])
     total_accuracy = 0.
@@ -295,24 +289,24 @@ def tag_dataset(pre_data, config, params, graph):
     return res
 
 
-def train_model(train_data, dev_data, inputs, targets, accuracy,
-                config, graph):
+def train_model(train_data, dev_data, inputs, targets, train_step, accuracy,
+                config, params, graph):
     train_data_32 = cut_and_pad(train_data, 32, config)
     dev_data_32 = cut_and_pad(dev_data, 32, config)
     accuracies = []
     preds = {}
-    for i in range(num_epochs):
+    for i in range(config.num_epochs):
         print i
         shuffle(train_data_32)
-        train_epoch(train_data_32, input_ids, targets, train_step, accuracy,
-                    config)
-        train_acc = validate_accuracy(train_data_32, input_ids, targets,
+        train_epoch(train_data_32, inputs, targets, train_step, accuracy,
+                    config, params)
+        train_acc = validate_accuracy(train_data_32, inputs, targets,
                                       accuracy, config)
-        dev_acc = validate_accuracy(dev_data_32, input_ids, targets, accuracy,
+        dev_acc = validate_accuracy(dev_data_32, inputs, targets, accuracy,
                                     config)
         accuracies += [(train_acc, dev_acc)]
         if i % config.num_predict == config.num_predict - 1:
-            preds[i+1] = tag_dataset(dev_data, config, params)
+            preds[i+1] = tag_dataset(dev_data, config, params, graph)
             predictions = [fuse_preds(sent, pred, config)
                            for sent, pred in zip(dev_data, preds[i+1])]
             merged = merge(predictions, dev_spans)
