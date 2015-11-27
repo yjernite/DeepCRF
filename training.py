@@ -2,6 +2,7 @@ from pprint import pprint
 
 from model_config import *
 from model_defs import *
+from model_use import *
 
 ###############################################
 # Load the data                               #
@@ -10,6 +11,7 @@ config = base_convo_config(input_features, l1_list, tag_list)
 
 train_data = read_data(train_file, features, config)
 dev_data = read_data(dev_file, features, config)
+dev_spans = treat_spans(dev_spans_file)
 
 config.make_mappings(train_data + dev_data)
 
@@ -33,22 +35,19 @@ with graph.as_default():
         train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
         sess.run(tf.initialize_all_variables())
 
-dev_spans = treat_spans(dev_spans_file)
-
 accuracies, preds = train_model(train_data, dev_data, inputs, targets,
                                 train_step, accuracy, config, params, graph)
-
 predictions = [fuse_preds(sent, pred, config)
                for sent, pred in zip(dev_data, preds[config.num_epochs])]
 merged = merge(predictions, dev_spans)
 
-if True:
-    print '##### Parameters'
-    pprint(config.to_string().splitlines())
-    print '##### Train/dev accuracies'
-    pprint(accuracies)
-    print '##### P-R-F curves'
-    for i in range(10):
-        evaluate(merged, 0.1 * i)
+
+print '##### Parameters'
+pprint(config.to_string().splitlines())
+print '##### Train/dev accuracies'
+pprint(accuracies)
+print '##### P-R-F curves'
+for i in range(10):
+    evaluate(merged, 0.1 * i)
 
 #~ execfile('training.py')
