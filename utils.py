@@ -6,27 +6,13 @@ import numpy as np
 ###############################################
 # Data reading functions                      #
 ###############################################
-def valid_tag(tag_tup):
-    ln = len(tag_tup)
-    mid = ln / 2
-    if '<P>' in tag_tup:
-        if tag_tup[mid] == '<P>':
-                    return False
-        else:
-            ct_a = tag_tup[:mid].count('<P>')
-            ct_b = tag_tup[mid + 1:].count('<P>')
-            if ((ct_a == mid and ct_b == 0) or (ct_b == mid and ct_a == 0)):
-                return True
-            return False
-    return True
-
-
 class Config:
     def __init__(self, batch_size=20, num_steps=32, learning_rate=1e-2,
                  l1_reg=2e-3, l1_list=[],
                  features_dim=50, init_words=False, input_features=[],
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
                  use_convo=False, conv_window=5, conv_dim=50,
+                 pot_window=1,
                  pred_window=1, tag_list=[],
                  verbose=False, num_epochs=10, num_predict=5):
         # optimization parameters
@@ -48,6 +34,9 @@ class Config:
         self.use_convo = use_convo
         self.conv_window = conv_window
         self.conv_dim = conv_dim
+        # CRF parameters:
+        self.pot_window = pot_window
+        self.n_tags = len(tag_list)
         # output layer
         self.pred_window = pred_window
         self.tag_list = tag_list
@@ -55,11 +44,12 @@ class Config:
         tags_ct = 0
         for element in itertools.product(tag_list, repeat=pred_window):
             tag_st = '_'.join(element)
-            if valid_tag(element):
-                self.label_dict[tag_st] = tags_ct
-                tags_ct += 1
+            mid = element[pred_window / 2]
+            if mid == '<P>':
+                self.label_dict[tag_st] = (-1, tag_list.index(mid))
             else:
-                self.label_dict[tag_st] = -1
+                self.label_dict[tag_st] = (tags_ct, tag_list.index(mid))
+            tags_ct += 1
         self.n_outcomes = tags_ct
         # misc parameters
         self.verbose = verbose
@@ -179,9 +169,10 @@ def make_batch(data, start, config, fill=False):
                     for sentence in batch_data]
     b_feats = [[[num_features * ft + i for i, ft in enumerate(word)]
                for word in sentence] for sentence in batch_features]
-    b_labs = [[[int(x == label) for x in range(n_outcomes)]
+    b_labs = [[[int(x == label[0]) for x in range(n_outcomes)]
                for label in sentence]
               for sentence in batch_labels]
+    b_tags = [[label[1] for label in sentence] for sentence in batch_labels]
     if fill:
         max_len = max(config.conv_window,
                       max([len(sentence) for sentence in batch_data]) + 2)
@@ -193,7 +184,8 @@ def make_batch(data, start, config, fill=False):
                          [range(num_features)] * post_len
             b_labs[i] = [[0] * n_outcomes] * pre_len + b_labs[i] + \
                         [[0] * n_outcomes] * post_len
-    return (b_feats, b_labs)
+            b_tags[i] = [0] * pre_len + b_tags[i] + [0] * post_len
+    return (b_feats, b_labs, b_tags)
 
 
 ###############################################

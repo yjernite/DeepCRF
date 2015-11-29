@@ -1,3 +1,5 @@
+from random import shuffle
+
 from utils import *
 from model_defs import *
 
@@ -9,7 +11,7 @@ def train_epoch(data, inputs, targets, train_step, accuracy, config, params):
     batch_size = int(inputs.get_shape()[0])
     n_outcomes = int(targets.get_shape()[2])
     for i in range(len(data) / batch_size):
-        (b_feats, b_labs) = make_batch(data, i * batch_size, config)
+        (b_feats, b_labs, b_tags) = make_batch(data, i * batch_size, config)
         f_dict = {inputs: b_feats, targets: b_labs}
         if i % 100 == 0:
             train_accuracy = accuracy.eval(feed_dict=f_dict)
