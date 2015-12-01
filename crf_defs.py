@@ -20,19 +20,32 @@ def potentials_layer(in_layer, config, params, reuse=False, name='Potentials'):
     return (pots_layer, W_pot, b_pot)
 
 
-def pseudo_likelihood(potentials, tags, config, params):
+# pseudo-likelihood criterion
+def pseudo_likelihood(potentials, config, params):
     batch_size = int(potentials.get_shape()[0])
     num_steps = int(potentials.get_shape()[1])
     pots_shape = int(potentials.get_shape()[2:])
+    pot_indices = tf.placeholder(tf.int32, [batch_size * num_steps])
+    targets = tf.placeholder(tf.float32, [batch_size, num_steps, config.n_tags])
+    flat_pots = tf.reshape(potentials, [-1, config.n_tags])
+    flat_cond = tf.gather(flat_pots, pot_indices)
+    pre_cond = tf.nn.softmax(flat_cond)
+    conditional = tf.reshape(pre_cond, [batch_size, num_steps, -1])
+    pseudo_ll = -tf.reduce_sum(targets * tf.log(conditional))
+    for feat in config.l1_list:
+        pseudo_ll += config.l1_reg * \
+                     tf.reduce_sum(tf.abs(params.embeddings[feat]))
+    return (pots_indices, targets, pseudo_ll)
 
 
-def pseudo_likelihood(potentials, targets, config, params):
-    batch_size = int(potentials.get_shape()[0])
-    num_steps = int(potentials.get_shape()[1])
-    pots_shape = int(potentials.get_shape()[2:])
-
-
+# max a posteriori tags assignment
 def map_tags(potentials, config, params):
+    batch_size = int(potentials.get_shape()[0])
+    num_steps = int(potentials.get_shape()[1])
+    pots_shape = int(potentials.get_shape()[2:])
+
+
+def log_partition(potentials, config, params):
     batch_size = int(potentials.get_shape()[0])
     num_steps = int(potentials.get_shape()[1])
     pots_shape = int(potentials.get_shape()[2:])

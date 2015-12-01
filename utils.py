@@ -185,7 +185,17 @@ def make_batch(data, start, config, fill=False):
             b_labs[i] = [[0] * n_outcomes] * pre_len + b_labs[i] + \
                         [[0] * n_outcomes] * post_len
             b_tags[i] = [0] * pre_len + b_tags[i] + [0] * post_len
-    return (b_feats, b_labs, b_tags)
+    mid = config.pot_window / 2
+    b_labs_bis = [[0] * mid + b_lab + [0] * mid for b_lab in b_labs]
+    # get linearized potential indices
+    b_pot_id_b = [sum([b_lab[i + j] * (config.n_tags ** (mid - j - 1))
+                       for j in range(-mid, 0)]) +
+                  sum([b_lab[i + j] * (config.n_tags ** (mid - j))
+                       for j in range(1, mid + 1)])
+                for b_lab in b_labs_bis for i in range(mid, len(b_lab) - mid)]
+    all_idx = config.n_tags ** (config.pot_window - 1)
+    b_pot_ids = [(all_idx * i + idx) for i, idx in enumerate(b_pot_id_b)]
+    return (b_feats, b_labs, b_tags, b_pot_ids)
 
 
 ###############################################
