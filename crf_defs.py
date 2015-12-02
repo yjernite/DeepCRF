@@ -27,7 +27,7 @@ def potentials_layer(in_layer, config, params, reuse=False, name='Potentials'):
 
 
 # pseudo-likelihood criterion
-def pseudo_likelihood(potentials, pots_indices, target, config):
+def pseudo_likelihood(potentials, pots_indices, targets, config):
     batch_size = int(potentials.get_shape()[0])
     num_steps = int(potentials.get_shape()[1])
     pots_shape = map(int, potentials.get_shape()[2:])

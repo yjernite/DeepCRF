@@ -91,6 +91,77 @@ class Config:
         return st
 
 
+class Batch:
+    def __init__(self):
+        # features: {'word': 'have', 'pos': 'VB', ...} ->
+        #                              [1345, 12 * num_features + 1,...]
+        self.features = []
+        # tags: 'B' -> 1
+        self.tags = []
+        # tags_one_hot: 'B' -> [0, 1, 0, 0, 0, 0]
+        self.tags_one_hot = []
+        # tag_windows_one_hot: '<P>_B_O' -> [0, ..., 0, 1, 0, ..., 0]
+        self.tag_windows_one_hot = []
+        # tag_neighbours: '<P>_B_O' -> [0 , 3]
+        self.tag_neighbours = []
+        # tag_neighbours_linearized: '<P>_B_O' -> 0 * config.n_tags + 3
+        self.tag_neighbours_lin = []
+    def read(self, data, start, config, fill=False):
+        num_features = len(config.input_features)
+        batch_data = data[start:start + config.batch_size]
+        batch_features = [[[config.feature_maps[feat]['lookup'][token[feat]]
+                            for feat in config.input_features]
+                           for token in sentence]
+                          for sentence in batch_data]
+        batch_labels = [[config.label_dict[token['label']]
+                         for token in sentence]
+                        for sentence in batch_data]
+        # multiply feature indices for use in tf.nn.embedding_lookup
+        self.features = [[[num_features * ft + i for i, ft in enumerate(word)]
+                         for word in sentence] for sentence in batch_features]
+        self.tags = [[label[1] for label in sentence]
+                     for sentence in batch_labels]
+        self.tags_one_hot = [[[int(x == label[1])
+                               for x in range(config.n_tags)]
+                              for label in sentence]
+                             for sentence in batch_labels]
+        self.tag_windows_one_hot = [[[int(x == label[0])
+                                      for x in range(config.n_outcomes)]
+                                     for label in sentence]
+                                    for sentence in batch_labels]
+        if fill:
+            max_len = max(config.conv_window,
+                          max([len(sentence) for sentence in batch_data]) + 2)
+            for i in range(config.batch_size):
+                current_len = len(batch_data[i])
+                pre_len = (max_len - current_len) / 2
+                post_len = max_len - pre_len - current_len
+                self.features[i] = [range(num_features)] * pre_len + \
+                                   self.features[i] + \
+                                   [range(num_features)] * post_len
+                self.tags[i] = [0] * pre_len + self.tags[i] + [0] * post_len
+                self.tags_one_hot[i] = [[0] * config.n_outcomes] * pre_len + \
+                                       self.tags_one_hot[i] + \
+                                       [[0] * config.n_outcomes] * post_len
+                self.tag_windows_one_hot[i] = [[0] * config.n_outcomes] * pre_len + \
+                                              self.tag_windows_one_hot[i] + \
+                                              [[0] * config.n_outcomes] * post_len
+        mid = config.pot_window / 2
+        padded_tags = [[0] * mid + sentence + [0] * mid
+                       for sentence in self.tags]
+        # get linearized potential indices
+        self.tag_neighbours = [[sent[i + j]
+                                for j in range(-mid, 0) + range(1, mid + 1)]
+                               for sent in padded_tags
+                               for i in range(mid, len(sent) - mid)]
+        max_pow = config.pot_window - 1
+        all_idx = config.n_tags ** max_pow
+        self.tag_neighbours_lin = [(all_idx * i + \
+                                    sum([idx * (config.n_tags) ** (max_pow - j - 1)
+                                         for j, idx in enumerate(token)]))
+                                   for i, token in enumerate(self.tag_neighbours)]
+
+
 def aggregate_labels(sentence, config):
     pre_tags = ['<P>'] * (config.pred_window / 2)
     sentence_ext = pre_tags + [token['label']
@@ -180,52 +251,6 @@ def cut_batches(data, config):
            for i in range(num_cuts)]
     res[-1] = res[-1] + [pad_token] * (config.num_steps - len(res[-1]))
     return res
-
-
-# make a batch: batch_size x num_steps x num_features
-def make_batch(data, start, config, fill=False):
-    batch_size = config.batch_size
-    features_list = config.input_features
-    n_outcomes = config.n_outcomes
-    feature_mappings = config.feature_maps
-    label_dict = config.label_dict
-    num_features = len(features_list)
-    batch_data = data[start:start + batch_size]
-    batch_features = [[[feature_mappings[feat]['lookup'][token[feat]]
-                        for feat in features_list]
-                       for token in sentence]
-                      for sentence in batch_data]
-    batch_labels = [[label_dict[token['label']] for token in sentence]
-                    for sentence in batch_data]
-    b_feats = [[[num_features * ft + i for i, ft in enumerate(word)]
-               for word in sentence] for sentence in batch_features]
-    b_labs = [[[int(x == label[0]) for x in range(n_outcomes)]
-               for label in sentence]
-              for sentence in batch_labels]
-    b_tags = [[label[1] for label in sentence] for sentence in batch_labels]
-    if fill:
-        max_len = max(config.conv_window,
-                      max([len(sentence) for sentence in batch_data]) + 2)
-        for i in range(batch_size):
-            current_len = len(b_feats[i])
-            pre_len = (max_len - current_len) / 2
-            post_len = max_len - pre_len - current_len
-            b_feats[i] = [range(num_features)] * pre_len + b_feats[i] + \
-                         [range(num_features)] * post_len
-            b_labs[i] = [[0] * n_outcomes] * pre_len + b_labs[i] + \
-                        [[0] * n_outcomes] * post_len
-            b_tags[i] = [0] * pre_len + b_tags[i] + [0] * post_len
-    mid = config.pot_window / 2
-    b_labs_bis = [[0] * mid + b_lab + [0] * mid for b_lab in b_labs]
-    # get linearized potential indices
-    b_pot_id_b = [sum([b_lab[i + j] * (config.n_tags ** (mid - j - 1))
-                       for j in range(-mid, 0)]) +
-                  sum([b_lab[i + j] * (config.n_tags ** (mid - j))
-                       for j in range(1, mid + 1)])
-                for b_lab in b_labs_bis for i in range(mid, len(b_lab) - mid)]
-    all_idx = config.n_tags ** (config.pot_window - 1)
-    b_pot_ids = [(all_idx * i + idx) for i, idx in enumerate(b_pot_id_b)]
-    return (b_feats, b_labs, b_tags, b_pot_ids)
 
 
 ###############################################

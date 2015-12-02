@@ -10,9 +10,10 @@ from model_defs import *
 def train_epoch(data, inputs, targets, train_step, accuracy, config, params):
     batch_size = int(inputs.get_shape()[0])
     n_outcomes = int(targets.get_shape()[2])
+    batch = Batch()
     for i in range(len(data) / batch_size):
-        (b_feats, b_labs, b_tags, b_pot_ids) = make_batch(data, i * batch_size, config)
-        f_dict = {inputs: b_feats, targets: b_labs}
+        batch.read(data, i * batch_size, config)
+        f_dict = {inputs: batch.features, targets: batch.tag_windows_one_hot}
         if i % 100 == 0:
             train_accuracy = accuracy.eval(feed_dict=f_dict)
             print("step %d of %d, training accuracy %f, Lemma_l1 %f" %
@@ -24,13 +25,12 @@ def train_epoch(data, inputs, targets, train_step, accuracy, config, params):
 def validate_accuracy(data, inputs, targets, accuracy, config):
     batch_size = int(inputs.get_shape()[0])
     n_outcomes = int(targets.get_shape()[2])
+    batch = Batch()
     total_accuracy = 0.
     total = 0.
     for i in range(len(data) / batch_size):
-        (b_feats, b_labs, b_tags, b_pot_ids) = make_batch(data,
-                                                          i * batch_size,
-                                                          config)
-        f_dict = {inputs: b_feats, targets: b_labs}
+        batch.read(data, i * batch_size, config)
+        f_dict = {inputs: batch.features, targets: batch.tag_windows_one_hot}
         dev_accuracy = accuracy.eval(feed_dict=f_dict)
         total_accuracy += dev_accuracy
         total += 1
@@ -60,11 +60,7 @@ def fuse_preds(sentence, pred, config):
 def tag_dataset(pre_data, config, params, graph):
     save_num_steps = config.num_steps
     batch_size = config.batch_size
-    hidden_units = config.rnn_hidden_units
-    rnn_out_dim = config.rnn_output_size
-    conv_window = config.conv_window
-    conv_dim = config.conv_dim
-    n_outcomes = config.n_outcomes
+    batch = Batch()
     # first, sort by length for computational reasons
     num_dev = enumerate(pre_data)
     mixed = sorted(num_dev, key=lambda x: len(x[1]))
@@ -80,11 +76,11 @@ def tag_dataset(pre_data, config, params, graph):
     in_words = []
     print 'processing %d sentences' % ((len(data) / batch_size) * batch_size,)
     for i in range(len(data) / batch_size):
-        (b_feats, b_labs, b_tags, b_pot_ids) = make_batch(data, i * batch_size, config, fill=True)
+        batch.read(data, i * batch_size, config, fill=True)
         if i % 100 == 0:
             print 'making features', i, 'of', len(data) / batch_size,
             print 'rnn size', config.num_steps
-        n_words = len(b_feats[0])
+        n_words = len(batch.features[0])
         if n_words > config.num_steps:
             config.num_steps = n_words
             with graph.as_default():
@@ -92,7 +88,7 @@ def tag_dataset(pre_data, config, params, graph):
                     tf.get_variable_scope().reuse_variables()
                     (input_ids, targets, preds_layer, criterion,
                      accuracy) = make_network(config, params, reuse=True)
-        f_dict = {input_ids: b_feats}
+        f_dict = {input_ids: batch.features}
         tmp_preds = [[(b_labs[i][j].index(1), token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in b_labs[i][j]]
                      for i, sentence in enumerate(list(preds_layer.eval(feed_dict=f_dict)))]
