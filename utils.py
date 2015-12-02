@@ -4,6 +4,20 @@ import numpy as np
 
 
 ###############################################
+# Generally useful functions                  #
+###############################################
+# useful with reshape
+def linearize_indices(indices, dims):
+    res = []
+    remain = indices
+    for i, _ in enumerate(dims):
+        res = [remain % dims[-i - 1]] + res
+        remain = remain / dims[-i - 1]
+    linearized = tf.transpose(tf.pack(res))
+    return linearized
+
+
+###############################################
 # Data reading functions                      #
 ###############################################
 class Config:
@@ -128,10 +142,11 @@ def read_vectors(file_name, vocab):
     return res
 
 
-# extract windows from data to fit into unrolled RNN
-def cut_and_pad(data, num_steps, config):
+# extract windows from data to fit into unrolled RNN. Independent sentences
+def cut_and_pad(data, config):
     pad_token = dict([(feat, '_unk_') for feat in data[0][0]])
     pad_token['label'] = '_'.join(['<P>'] * config.pred_window)
+    num_steps = config.num_steps
     res = []
     seen = 0
     sen = [pad_token] + data[0] + [pad_token]
@@ -149,6 +164,21 @@ def cut_and_pad(data, num_steps, config):
         else:
             res += [sen[:num_steps]]
             sen = sen[(2 * num_steps) / 3:]
+    return res
+
+
+# extract windows from data to fit into unrolled RNN. Continuous model
+def cut_batches(data, config):
+    pad_token = dict([(feat, '_unk_') for feat in data[0][0]])
+    pad_token['label'] = '_'.join(['<P>'] * config.pred_window)
+    padding = [pad_token] * config.pred_window
+    new_data = padding + [tok for sentence in data
+                          for tok in sentence + padding]
+    step_size = (config.num_steps / 2)
+    num_cuts = len(new_data) / step_size
+    res = [new_data[i * step_size: i * step_size + config.num_steps]
+           for i in range(num_cuts)]
+    res[-1] = res[-1] + [pad_token] * (config.num_steps - len(res[-1]))
     return res
 
 

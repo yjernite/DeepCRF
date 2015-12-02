@@ -27,7 +27,9 @@ def validate_accuracy(data, inputs, targets, accuracy, config):
     total_accuracy = 0.
     total = 0.
     for i in range(len(data) / batch_size):
-        (b_feats, b_labs) = make_batch(data, i * batch_size, config)
+        (b_feats, b_labs, b_tags, b_pot_ids) = make_batch(data,
+                                                          i * batch_size,
+                                                          config)
         f_dict = {inputs: b_feats, targets: b_labs}
         dev_accuracy = accuracy.eval(feed_dict=f_dict)
         total_accuracy += dev_accuracy
@@ -78,7 +80,7 @@ def tag_dataset(pre_data, config, params, graph):
     in_words = []
     print 'processing %d sentences' % ((len(data) / batch_size) * batch_size,)
     for i in range(len(data) / batch_size):
-        (b_feats, b_labs) = make_batch(data, i * batch_size, config, fill=True)
+        (b_feats, b_labs, b_tags, b_pot_ids) = make_batch(data, i * batch_size, config, fill=True)
         if i % 100 == 0:
             print 'making features', i, 'of', len(data) / batch_size,
             print 'rnn size', config.num_steps
@@ -104,8 +106,10 @@ def tag_dataset(pre_data, config, params, graph):
 
 def train_model(train_data, dev_data, inputs, targets, train_step, accuracy,
                 config, params, graph):
-    train_data_32 = cut_and_pad(train_data, 32, config)
-    dev_data_32 = cut_and_pad(dev_data, 32, config)
+    #~ train_data_32 = cut_and_pad(train_data, config)
+    #~ dev_data_32 = cut_and_pad(dev_data, config)
+    train_data_32 = cut_batches(train_data, config)
+    dev_data_32 = cut_batches(dev_data, config)
     accuracies = []
     preds = {}
     for i in range(config.num_epochs):

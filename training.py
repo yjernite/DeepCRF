@@ -41,13 +41,13 @@ predictions = [fuse_preds(sent, pred, config)
                for sent, pred in zip(dev_data, preds[config.num_epochs])]
 merged = merge(predictions, dev_spans)
 
-
-print '##### Parameters'
-pprint(config.to_string().splitlines())
-print '##### Train/dev accuracies'
-pprint(accuracies)
-print '##### P-R-F curves'
-for i in range(10):
-    evaluate(merged, 0.1 * i)
+if True:
+    print '##### Parameters'
+    pprint(config.to_string().splitlines())
+    print '##### Train/dev accuracies'
+    pprint(accuracies)
+    print '##### P-R-F curves'
+    for i in range(10):
+        evaluate(merged, 0.1 * i)
 
 #~ execfile('training.py')
