@@ -1,3 +1,5 @@
 #DeepCRF package
 
-Convolutions and RNN implemented, working on CRF
+Convolutions and RNN tagging models are implemented and tested
+
+CRF model is implemented and needs to be tested

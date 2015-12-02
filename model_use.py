@@ -47,9 +47,9 @@ def fuse_preds(sentence, pred, config):
     for tok in zip(sentence, pred):
         tok_d = dict([(tag, 0) for tag in ['B', 'I', 'O', 'ID', 'OD']])
         for lab, idx in config.label_dict.items():
-            tag = lab.split('_')[mid]
-            if idx >= 0:
-                tok_d[tag] += tok[1][1][idx]
+            tag = config.tag_list[idx[1]]
+            if idx[0] >= 0:
+                tok_d[tag] += tok[1][1][idx[0]]
         tok_d['word'] = tok[0]['word']
         tok_d['label'] = tok[0]['label'].split('_')[mid]
         res += [tok_d]
