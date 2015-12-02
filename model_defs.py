@@ -25,10 +25,11 @@ class Parameters:
 
 
 def device_for_node(n):
-    if n.type == "MatMul":
-        return "/gpu:0"
-    else:
-        return "/cpu:0"
+    return "/cpu:0"
+    #~ if n.type == "MatMul":
+        #~ return "/gpu:0"
+    #~ else:
+        #~ return "/cpu:0"
 
 
 def conv2d(x, W):

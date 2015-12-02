@@ -121,7 +121,7 @@ class Batch:
                          for word in sentence] for sentence in batch_features]
         self.tags = [[label[1] for label in sentence]
                      for sentence in batch_labels]
-        self.tags_one_hot = [[[int(x == label[1] and x > 0)  # TODO: count padding tokens?
+        self.tags_one_hot = [[[int(x == label[1])  # TODO: count padding tokens?
                                for x in range(config.n_tags)]
                               for label in sentence]
                              for sentence in batch_labels]

@@ -8,11 +8,11 @@ from tensorflow.models.rnn.rnn_cell import *
 
 # takes features and outputs potentials
 def potentials_layer(in_layer, config, params, reuse=False, name='Potentials'):
-    pot_size = config.n_tags ** config.pot_window
-    out_shape = [batch_size, num_steps] + [config.n_tags] * config.pot_window
     batch_size = int(in_layer.get_shape()[0])
     num_steps = int(in_layer.get_shape()[1])
     input_size = int(in_layer.get_shape()[2])
+    pot_size = config.n_tags ** config.pot_window
+    out_shape = [batch_size, num_steps] + [config.n_tags] * config.pot_window
     if reuse:
         tf.get_variable_scope().reuse_variables()
         W_pot = params.W_pot
@@ -22,12 +22,12 @@ def potentials_layer(in_layer, config, params, reuse=False, name='Potentials'):
         b_pot = bias_variable([pot_size], name=name)
     flat_input = tf.reshape(in_layer, [-1, input_size])
     pre_scores = tf.matmul(flat_input, W_pot) + b_pot
-    pots_layer = tf.reshape(pre_scores, [batch_size, num_steps, out_shape])
+    pots_layer = tf.reshape(pre_scores, out_shape)
     return (pots_layer, W_pot, b_pot)
 
 
 # pseudo-likelihood criterion
-def pseudo_likelihood(potentials, pots_indices, targets, config):
+def pseudo_likelihood(potentials, pot_indices, targets, config):
     batch_size = int(potentials.get_shape()[0])
     num_steps = int(potentials.get_shape()[1])
     pots_shape = map(int, potentials.get_shape()[2:])
@@ -92,7 +92,7 @@ def map_assignment(potentials, config):
     # forward pass
     max_cell = CRFMaxCell(config)
     max_ids = [0] * len(inputs_list)
-    state = tf.convert_to_tensor(np.zeros(pots_shape[:-1]))
+    state = tf.zeros(pots_shape[:-1])
     for t, input_ in enumerate(inputs_list):
         state, max_id = max_cell(inputs_list[t], state)
         max_ids[t] = max_id
@@ -101,10 +101,13 @@ def map_assignment(potentials, config):
              (config.n_tags ** (config.pot_window - 1))
     outputs = [-1] * len(inputs_list)
     best_end = tf.argmax(tf.reshape(state, [batch_size, -1]), 1)
-    current = best_end + powers
+    current = best_end
+    mid = config.pot_window / 2
+    max_pow = (config.n_tags ** mid)
     for i, _ in enumerate(outputs):
-        outputs[-1 - i] = tf.gather(tf.reshape(max_ids[-1 - i], [-1]), current)
-        current = outputs[-1 - i] + powers
+        outputs[-1 - i] = (current / max_pow) 
+        prev_best = tf.gather(tf.reshape(max_ids[-1 - i], [-1]), current + powers)
+        current = prev_best * max_pow + (current / config.n_tags)
     map_tags = tf.transpose(tf.pack(outputs))
     return map_tags
 
@@ -155,7 +158,7 @@ def log_partition(potentials, config):
                    for x in tf.split(1, num_steps, potentials)]
     # forward pass
     sum_cell = CRFSumCell(config)
-    state = tf.convert_to_tensor(np.zeros(pots_shape[:-1]))
+    state = tf.zeros(pots_shape[:-1])
     partial_sums = [0] * len(inputs_list)
     for t, input_ in enumerate(inputs_list):
         state = sum_cell(inputs_list[t], state)
