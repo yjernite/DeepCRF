@@ -104,7 +104,7 @@ class Batch:
         self.tag_windows_one_hot = []
         # tag_neighbours: '<P>_B_O' -> [0 , 3]
         self.tag_neighbours = []
-        # tag_neighbours_linearized: '<P>_B_O' -> 0 * config.n_tags + 3
+        # tag_neighbours_linearized: num_values * token_id + '<P>_B_O' -> 0 * config.n_tags + 3
         self.tag_neighbours_lin = []
     def read(self, data, start, config, fill=False):
         num_features = len(config.input_features)
@@ -121,7 +121,7 @@ class Batch:
                          for word in sentence] for sentence in batch_features]
         self.tags = [[label[1] for label in sentence]
                      for sentence in batch_labels]
-        self.tags_one_hot = [[[int(x == label[1])
+        self.tags_one_hot = [[[int(x == label[1] and x > 0)  # TODO: count padding tokens?
                                for x in range(config.n_tags)]
                               for label in sentence]
                              for sentence in batch_labels]

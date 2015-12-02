@@ -37,8 +37,10 @@ with graph.as_default():
 
 accuracies, preds = train_model(train_data, dev_data, inputs, targets,
                                 train_step, accuracy, config, params, graph)
+
 predictions = [fuse_preds(sent, pred, config)
                for sent, pred in zip(dev_data, preds[config.num_epochs])]
+
 merged = merge(predictions, dev_spans)
 
 if True:

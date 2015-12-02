@@ -89,8 +89,8 @@ def tag_dataset(pre_data, config, params, graph):
                     (input_ids, targets, preds_layer, criterion,
                      accuracy) = make_network(config, params, reuse=True)
         f_dict = {input_ids: batch.features}
-        tmp_preds = [[(b_labs[i][j].index(1), token_preds)
-                      for j, token_preds in enumerate(sentence) if 1 in b_labs[i][j]]
+        tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
+                      for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
                      for i, sentence in enumerate(list(preds_layer.eval(feed_dict=f_dict)))]
         res += tmp_preds
     # re-order data
