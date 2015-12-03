@@ -23,49 +23,14 @@ else:
 
 params = Parameters(init=pre_trained)
 
-
-###############################################
-# make and test the CRF                       #
-###############################################
-
-from crf_use import *
-
-config.pot_window = 3
-config.features_dim = config.n_tags ** config.pot_window
-config.l1_reg = 0
-
-graph = tf.Graph()
-with graph.as_default():
-    with graph.device(device_for_node):
-        sess = tf.InteractiveSession()
-        (input_ids, pot_indices, targets,
-            criterion, accuracy, map_tags) =  make_crf(config, params)
-        train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
-        sess.run(tf.initialize_all_variables())
-
-
-train_data_32 = cut_batches(train_data, config)[:2000]
-dev_data_32 = cut_batches(dev_data, config)[:2000]
-
-for i in range(10):
-    print 'epoch ----------------', i
-    shuffle(train_data_32)
-    train_epoch_crf(train_data_32, input_ids, targets, pot_indices, train_step, accuracy, criterion, config, params)
-    validate_accuracy_crf(train_data_32, input_ids, targets, accuracy, config)
-    validate_accuracy_crf(dev_data_32, input_ids, targets, accuracy, config)
-
-
 ###############################################
 # make and test the NN                        #
 ###############################################
 
-graph = tf.Graph()
-with graph.as_default():
-    with graph.device(device_for_node):
-        sess = tf.InteractiveSession()
-        (inputs, targets, preds_layer, criterion, accuracy) =  make_network(config, params)
-        train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
-        sess.run(tf.initialize_all_variables())
+sess = tf.InteractiveSession()
+(inputs, targets, preds_layer, criterion, accuracy) =  make_network(config, params)
+train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
+sess.run(tf.initialize_all_variables())
 
 accuracies, preds = train_model(train_data, dev_data, inputs, targets,
                                 train_step, accuracy, config, params, graph)
@@ -85,3 +50,9 @@ if True:
         evaluate(merged, 0.1 * i)
 
 #~ execfile('training.py')
+
+
+# code to assign computation nodes:
+#~ graph = tf.Graph()
+#~ with graph.as_default():
+    #~ with graph.device(device_for_node):
