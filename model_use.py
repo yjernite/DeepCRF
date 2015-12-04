@@ -83,11 +83,9 @@ def tag_dataset(pre_data, config, params, graph):
         n_words = len(batch.features[0])
         if n_words > config.num_steps:
             config.num_steps = n_words
-            with graph.as_default():
-                with graph.device(device_for_node):
-                    tf.get_variable_scope().reuse_variables()
-                    (input_ids, targets, preds_layer, criterion,
-                     accuracy) = make_network(config, params, reuse=True)
+            tf.get_variable_scope().reuse_variables()
+            (input_ids, targets, preds_layer, criterion,
+                  accuracy) = make_network(config, params, reuse=True)
         f_dict = {input_ids: batch.features}
         tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
