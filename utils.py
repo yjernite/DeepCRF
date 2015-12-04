@@ -23,6 +23,7 @@ def linearize_indices(indices, dims):
 class Config:
     def __init__(self, batch_size=20, num_steps=32, learning_rate=1e-2,
                  l1_reg=2e-3, l1_list=[],
+                 l2_reg=2e-3, l2_list=[],
                  features_dim=50, init_words=False, input_features=[],
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
                  use_convo=False, conv_window=5, conv_dim=50,
@@ -36,6 +37,8 @@ class Config:
         # regularization parameters
         self.l1_reg = l1_reg
         self.l1_list = l1_list
+        self.l2_reg = l2_reg
+        self.l2_list = l2_list
         # input layer
         self.features_dim = features_dim
         self.init_words = init_words
@@ -100,12 +103,17 @@ class Batch:
         self.tags = []
         # tags_one_hot: 'B' -> [0, 1, 0, 0, 0, 0]
         self.tags_one_hot = []
+        # tag_windows: '<P>_B_O' -> [0, 1, 3]
+        self.tag_windows = []
+        # tag_windows_lin: '<P>_B_O' -> num_values * token_id + 0 * config.n_tags **2 + 1 * config.n_tags + 3
+        self.tag_windows_lin = []
         # tag_windows_one_hot: '<P>_B_O' -> [0, ..., 0, 1, 0, ..., 0]
         self.tag_windows_one_hot = []
-        # tag_neighbours: '<P>_B_O' -> [0 , 3]
+        # tag_neighbours: '<P>_B_O' -> [0, 3]
         self.tag_neighbours = []
-        # tag_neighbours_linearized: num_values * token_id + '<P>_B_O' -> 0 * config.n_tags + 3
+        # tag_neighbours_linearized: '<P>_B_O' -> num_values * token_id + 0 * config.n_tags + 3
         self.tag_neighbours_lin = []
+        # mask: <P> -> 0, everything else -> 1
     def read(self, data, start, config, fill=False):
         num_features = len(config.input_features)
         batch_data = data[start:start + config.batch_size]
@@ -121,7 +129,7 @@ class Batch:
                          for word in sentence] for sentence in batch_features]
         self.tags = [[label[1] for label in sentence]
                      for sentence in batch_labels]
-        self.tags_one_hot = [[[int(x == label[1])  # TODO: count padding tokens?
+        self.tags_one_hot = [[[int(x == label[1] and x > 0)  # TODO: count padding tokens?
                                for x in range(config.n_tags)]
                               for label in sentence]
                              for sentence in batch_labels]
@@ -149,17 +157,26 @@ class Batch:
         mid = config.pot_window / 2
         padded_tags = [[0] * mid + sentence + [0] * mid
                        for sentence in self.tags]
+        # get linearized window indices
+        self.tag_windows = [[sent[i + j] for j in range(-mid, mid + 1)]
+                            for sent in padded_tags
+                            for i in range(mid, len(sent) - mid)]
+        n_indices = config.n_tags ** config.pot_window
+        self.tag_windows_lin = [sum([t * (config.n_tags ** (config.pot_window - 1 - i))
+                                      for i, t in enumerate(window)]) + i * n_indices
+                                for i, window in enumerate(self.tag_windows)]
         # get linearized potential indices
         self.tag_neighbours = [[sent[i + j]
                                 for j in range(-mid, 0) + range(1, mid + 1)]
                                for sent in padded_tags
                                for i in range(mid, len(sent) - mid)]
         max_pow = config.pot_window - 1
-        all_idx = config.n_tags ** max_pow
-        self.tag_neighbours_lin = [(all_idx * i + \
-                                    sum([idx * (config.n_tags) ** (max_pow - j - 1)
-                                         for j, idx in enumerate(token)]))
+        n_indices = config.n_tags ** max_pow
+        self.tag_neighbours_lin = [sum([idx * (config.n_tags) ** (max_pow - j - 1)
+                                        for j, idx in enumerate(token)]) + i * n_indices
                                    for i, token in enumerate(self.tag_neighbours)]
+        # make mask:
+        self.mask = [[int(tag > 0) for tag in sent] for sent in self.tags]
 
 
 def aggregate_labels(sentence, config):
@@ -220,7 +237,8 @@ def cut_and_pad(data, config):
     num_steps = config.num_steps
     res = []
     seen = 0
-    sen = [pad_token] + data[0] + [pad_token]
+    pad_len = max(config.pred_window, config.pot_window) / 2
+    sen = [pad_token] * pad_len + data[0] + [pad_token] * pad_len
     while seen < len(data):
         if len(sen) < num_steps:
             if sen[0]['label'] == '<P>':
@@ -231,7 +249,7 @@ def cut_and_pad(data, config):
             res += [new_sen[:]]
             seen += 1
             if seen < len(data):
-                sen = [pad_token] + data[seen] + [pad_token]
+                sen = [pad_token] * pad_len + data[seen] + [pad_token] * pad_len
         else:
             res += [sen[:num_steps]]
             sen = sen[(2 * num_steps) / 3:]
