@@ -7,39 +7,6 @@ from model_defs import *
 ###############################################
 # NN usage functions                          #
 ###############################################
-def train_epoch(data, inputs, targets, train_step, accuracy, config, params):
-    batch_size = int(inputs.get_shape()[0])
-    n_outcomes = int(targets.get_shape()[2])
-    batch = Batch()
-    for i in range(len(data) / batch_size):
-        batch.read(data, i * batch_size, config)
-        f_dict = {inputs: batch.features, targets: batch.tag_windows_one_hot}
-        if i % 100 == 0:
-            train_accuracy = accuracy.eval(feed_dict=f_dict)
-            print("step %d of %d, training accuracy %f, Lemma_l1 %f" %
-                  (i, len(data) / batch_size, train_accuracy,
-                   tf.reduce_sum(tf.abs(params.embeddings['lemma'])).eval()))
-        train_step.run(feed_dict=f_dict)
-
-
-def validate_accuracy(data, inputs, targets, accuracy, config):
-    batch_size = int(inputs.get_shape()[0])
-    n_outcomes = int(targets.get_shape()[2])
-    batch = Batch()
-    total_accuracy = 0.
-    total = 0.
-    for i in range(len(data) / batch_size):
-        batch.read(data, i * batch_size, config)
-        f_dict = {inputs: batch.features, targets: batch.tag_windows_one_hot}
-        dev_accuracy = accuracy.eval(feed_dict=f_dict)
-        total_accuracy += dev_accuracy
-        total += 1
-        if i % 100 == 0:
-            print("%d of %d: \t:%f" % (i, len(data) / batch_size,
-                                       total_accuracy / total))
-    return total_accuracy / total
-
-
 # combines a sentence with the predicted marginals
 def fuse_preds(sentence, pred, config):
     res = []
@@ -98,8 +65,7 @@ def tag_dataset(pre_data, config, params, graph):
     return res
 
 
-def train_model(train_data, dev_data, inputs, targets, train_step, accuracy,
-                config, params, graph):
+def train_model(train_data, dev_data, sequ_nn, config, params, graph):
     #~ train_data_32 = cut_and_pad(train_data, config)
     #~ dev_data_32 = cut_and_pad(dev_data, config)
     train_data_32 = cut_batches(train_data, config)
@@ -109,12 +75,9 @@ def train_model(train_data, dev_data, inputs, targets, train_step, accuracy,
     for i in range(config.num_epochs):
         print i
         shuffle(train_data_32)
-        train_epoch(train_data_32, inputs, targets, train_step, accuracy,
-                    config, params)
-        train_acc = validate_accuracy(train_data_32, inputs, targets,
-                                      accuracy, config)
-        dev_acc = validate_accuracy(dev_data_32, inputs, targets, accuracy,
-                                    config)
+        sequ_nn.train_epoch(train_data_32, config, params)
+        train_acc = sequ_nn.validate_accuracy(train_data_32, config)
+        dev_acc = sequ_nn.validate_accuracy(dev_data_32, config)
         accuracies += [(train_acc, dev_acc)]
         if i % config.num_predict == config.num_predict - 1:
             preds[i+1] = tag_dataset(dev_data, config, params, graph)

@@ -27,7 +27,9 @@ params = Parameters(init=pre_trained)
 # make and test the NN                        #
 ###############################################
 
+graph = tf.Graph()
 sess = tf.InteractiveSession()
+
 (inputs, targets, preds_layer, criterion, accuracy) =  make_network(config, params)
 train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
 sess.run(tf.initialize_all_variables())

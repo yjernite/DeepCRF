@@ -45,7 +45,7 @@ def bias_variable(shape, name='weight'):
     return tf.Variable(initial, name=name+'_b')
 
 
-def feature_layer(config, params, reuse=False):
+def feature_layer(in_layer, config, params, reuse=False):
     in_features = config.input_features
     features_dim = config.features_dim
     batch_size = config.batch_size
@@ -53,8 +53,7 @@ def feature_layer(config, params, reuse=False):
     feature_mappings = config.feature_maps
     # inputs
     num_features = len(in_features)
-    input_ids = tf.placeholder(tf.int32, shape=[batch_size, num_steps,
-                                                num_features])
+    input_ids = in_layer
     if reuse:
         tf.get_variable_scope().reuse_variables()
         param_vars = params.embeddings
@@ -78,7 +77,7 @@ def feature_layer(config, params, reuse=False):
     input_embeddings = tf.nn.embedding_lookup(params, input_ids, name='lookup')
     # add and return
     embedding_layer = tf.reduce_sum(input_embeddings, 2)
-    return (input_ids, embedding_layer, param_vars)
+    return (embedding_layer, param_vars)
 
 
 def bi_lstm_layer(in_layer, config, reuse=False, name='Bi_LSTM'):
@@ -143,11 +142,10 @@ def predict_layer(in_layer, config, params, reuse=False, name='Predict'):
     return (preds_layer, W_pred, b_pred)
 
 
-def optim_outputs(outcome, config, params):
+def optim_outputs(outcome, targets, config, params):
     batch_size = int(outcome.get_shape()[0])
     num_steps = int(outcome.get_shape()[1])
     n_outputs = int(outcome.get_shape()[2])
-    targets = tf.placeholder(tf.float32, [batch_size, num_steps, n_outputs])
     # We are currently using cross entropy as criterion
     criterion = -tf.reduce_sum(targets * tf.log(outcome))
     for feat in config.l1_list:
@@ -158,35 +156,88 @@ def optim_outputs(outcome, config, params):
     accuracy = tf.reduce_sum(tf.cast(correct_prediction,
                                      "float") * tf.reduce_sum(targets, 2)) /\
         tf.reduce_sum(targets)
-    return (targets, criterion, accuracy)
+    return (criterion, accuracy)
 
 
-def make_network(config, params, reuse=False, name='Model'):
-    with tf.variable_scope(name):
-        if reuse:
-            tf.get_variable_scope().reuse_variables()
-        (input_ids, out_layer, embeddings) = feature_layer(config, params,
-                                                           reuse=reuse)
-        params.embeddings = embeddings
-        if config.verbose:
-            print('features layer done')
-        if config.use_rnn:
-            out_layer = bi_lstm_layer(embedding_layer, config, reuse=reuse)
+class SequNN:
+    def __init__(self, config):
+        self.batch_size = config.batch_size
+        self.num_steps = config.num_steps
+        num_features = len(config.input_features)
+        # input_ids <- batch.features
+        self.input_ids = tf.placeholder(tf.int32, shape=[self.batch_size,
+                                                         self.num_steps,
+                                                         num_features])
+        # targets <- batch.tag_windows_one_hot
+        self.targets = tf.placeholder(tf.float32, shape=[self.batch_size,
+                                                         self.num_steps,
+                                                         config.n_outcomes])
+    
+    def make(self, config, params, reuse=False, name='SequNN'):
+        with tf.variable_scope(name):
+            if reuse:
+                tf.get_variable_scope().reuse_variables()
+            (out_layer, embeddings) = feature_layer(self.input_ids, config,
+                                                    params, reuse=reuse)
+            params.embeddings = embeddings
             if config.verbose:
-                print('rnn layer done')
-        if config.use_convo:
-            (out_layer, W_conv, b_conv) = convo_layer(out_layer, config,
-                                                      params, reuse=reuse)
-            params.W_conv = W_conv
-            params.b_conv = b_conv
+                print('features layer done')
+            if config.use_rnn:
+                out_layer = bi_lstm_layer(embedding_layer, config, reuse=reuse)
+                if config.verbose:
+                    print('rnn layer done')
+            if config.use_convo:
+                (out_layer, W_conv, b_conv) = convo_layer(out_layer, config,
+                                                          params, reuse=reuse)
+                params.W_conv = W_conv
+                params.b_conv = b_conv
+                if config.verbose:
+                    print('convolution layer done')
+            self.out_layer = out_layer
+            (preds_layer, W_pred, b_pred) = predict_layer(out_layer, config,
+                                                          params, reuse=reuse)
+            params.W_pred = W_pred
+            params.b_pred = b_pred
+            self.preds_layer = preds_layer
+            (criterion, accuracy) = optim_outputs(preds_layer, config, params)
             if config.verbose:
-                print('convolution layer done')
-        (preds_layer, W_pred, b_pred) = predict_layer(out_layer, config,
-                                                      params, reuse=reuse)
-        params.W_pred = W_pred
-        params.b_pred = b_pred
-        (targets, criterion, accuracy) = optim_outputs(preds_layer, config,
-                                                       params)
-        if config.verbose:
-            print('output layer done')
-    return (input_ids, targets, preds_layer, criterion, accuracy)
+                print('output layer done')
+            self.criterion = criterion
+            self.accuracy = accuracy
+    
+    def train_epoch(self, data, train_step, config, params):
+        batch_size = config.batch_size
+        train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
+        batch = Batch()
+        for i in range(len(data) / batch_size):
+            batch.read(data, i * batch_size, config)
+            f_dict = {self.input_ids: batch.features,
+                      self.targets: batch.tag_windows_one_hot}
+            if i % 100 == 0:
+                train_accuracy = self.accuracy.eval(feed_dict=f_dict)
+                print("step %d of %d, training accuracy %f, Lemma_l1 %f" %
+                      (i, len(data) / batch_size, train_accuracy,
+                       tf.reduce_sum(tf.abs(params.embeddings['lemma'])).eval()))
+            train_step.run(feed_dict=f_dict)
+    
+    def validate_accuracy(self, data, config):
+        batch_size = config.batch_size
+        batch = Batch()
+        total_accuracy = 0.
+        total = 0.
+        for i in range(len(data) / batch_size):
+            batch.read(data, i * batch_size, config)
+            f_dict = {self.input_ids: batch.features,
+                      self.targets: batch.tag_windows_one_hot}
+            dev_accuracy = self.accuracy.eval(feed_dict=f_dict)
+            total_accuracy += dev_accuracy
+            total += 1
+            if i % 100 == 0:
+                print("%d of %d: \t:%f" % (i, len(data) / batch_size,
+                                           total_accuracy / total))
+        return total_accuracy / total
+
+
+
+
+
