@@ -13,22 +13,16 @@ def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentia
     input_size = int(in_layer.get_shape()[2])
     pot_shape = [config.n_tags] * config.pot_window
     out_shape = [batch_size, num_steps] + pot_shape
-    #~ pot_size = config.n_tags ** config.pot_window
-    #~ if reuse:
-        #~ tf.get_variable_scope().reuse_variables()
-        #~ W_pot = params.W_pot
-        #~ b_pot = params.b_pot
-    #~ else:
-        #~ W_pot = weight_variable([input_size, pot_size], name=name)
-        #~ b_pot = bias_variable([pot_size], name=name)
-    #~ flat_input = tf.reshape(in_layer, [-1, input_size])
-    #~ pre_scores = tf.matmul(flat_input, W_pot) + b_pot
-    # BOGUS
-    W_pot = False
-    b_pot = False
-    reshaped_in = tf.reshape(in_layer, [batch_size, num_steps, config.pot_window, -1])
-    pre_scores = tf.reduce_sum(reshaped_in, 2)
-    # /BOGUS
+    pot_size = config.n_tags ** config.pot_window
+    if reuse:
+        tf.get_variable_scope().reuse_variables()
+        W_pot = params.W_pot
+        b_pot = params.b_pot
+    else:
+        W_pot = weight_variable([input_size, pot_size], name=name)
+        b_pot = bias_variable([pot_size], name=name)
+    flat_input = tf.reshape(in_layer, [-1, input_size])
+    pre_scores = tf.matmul(flat_input, W_pot) + b_pot
     pots_layer = tf.reshape(pre_scores, out_shape)
     # define potentials for padding tokens
     padding_pot = np.zeros(pot_shape)
