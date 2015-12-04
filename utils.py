@@ -27,7 +27,7 @@ class Config:
                  features_dim=50, init_words=False, input_features=[],
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
                  use_convo=False, conv_window=5, conv_dim=50,
-                 pot_window=1,
+                 pot_size=1,
                  pred_window=1, tag_list=[],
                  verbose=False, num_epochs=10, num_predict=5):
         # optimization parameters
@@ -52,7 +52,7 @@ class Config:
         self.conv_window = conv_window
         self.conv_dim = conv_dim
         # CRF parameters:
-        self.pot_window = pot_window
+        self.pot_size = pot_size
         self.n_tags = len(tag_list)
         # output layer
         self.pred_window = pred_window

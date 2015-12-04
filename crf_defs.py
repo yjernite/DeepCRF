@@ -42,7 +42,7 @@ def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentia
     mask_a = mask
     for _ in range(config.pot_window):
         mask_a = tf.expand_dims(mask_a, -1)
-    mask_a = tf.tile(mask_a, [1] + pot_shape)
+    mask_a = tf.tile(mask_a, [1, 1] + pot_shape)
     # combine
     pots_layer = (pots_layer * mask_a + (1 - mask_a) * pad_pots)
     return (pots_layer, W_pot, b_pot)
@@ -191,7 +191,7 @@ def log_partition(potentials, config):
     max_val = tf.reduce_max(state)
     state_exp = tf.exp(state - max_val)
     log_part = tf.log(tf.reduce_sum(tf.reshape(state_exp, [batch_size, -1]), 1)) + max_val
-    return log_part
+    return tf.reduce_sum(log_part)
 
 
 # compute the log to get the log-likelihood
@@ -203,7 +203,7 @@ def log_score(potentials, window_indices, mask, config):
     flat_scores = tf.gather(flat_pots, window_indices)
     scores = tf.reshape(flat_scores, [batch_size, num_steps])
     scores = tf.mul(scores, mask)
-    return tf.reduce_sum(scores, 1)
+    return tf.reduce_sum(scores)
     
 
 # TODO: alpha-beta rec
@@ -286,12 +286,13 @@ class CRF:
             # accuracy of p(t_i | t_{i-1}, t_{i+1})
             correct_cond_pred = tf.equal(tf.argmax(conditional, 2), tf.argmax(self.targets, 2))
             correct_cond_pred = tf.cast(correct_cond_pred,"float")
-            cond_accuracy = tf.reduce_sum(correct_cond_pred * tf.reduce_sum(targets, 2)) /\
-                            tf.reduce_sum(targets)
+            cond_accuracy = tf.reduce_sum(correct_cond_pred * tf.reduce_sum(self.targets, 2)) /\
+                            tf.reduce_sum(self.targets)
             self.cond_accuracy = cond_accuracy
             # log-likelihood
-            log_sc = log_score(pots_layer, window_indices, mask, config)
-            log_part = log_partition(pots_layer, config)
+            log_sc = log_score(self.pots_layer, self.window_indices,
+                               self.mask, config)
+            log_part = log_partition(self.pots_layer, config)
             log_likelihood = log_sc - log_part
             self.log_likelihood = log_likelihood
             # L1 regularization
@@ -306,7 +307,7 @@ class CRF:
                                 tf.reduce_sum(tf.mul(params.embeddings[feat],
                                                      params.embeddings[feat]))
             # map assignment and accuracy of map assignment
-            map_tags = map_assignment(pots_layer, config)
+            map_tags = map_assignment(self.pots_layer, config)
             correct_pred = tf.equal(map_tags, tf.argmax(self.targets, 2))
             correct_pred = tf.cast(correct_pred,"float")
             accuracy = tf.reduce_sum(correct_pred * tf.reduce_sum(self.targets, 2)) /\
@@ -314,7 +315,7 @@ class CRF:
             self.map_tags = map_tags
             self.accuracy = accuracy
     
-    def train_epoch(self, data, config, params, crit_type='likelihood'):
+    def train_epoch(self, data, config, params, session, crit_type='likelihood'):
         batch_size = config.batch_size
         criterion = None
         if crit_type == 'pseudo':
@@ -323,6 +324,7 @@ class CRF:
             criterion = -self.log_likelihood
         criterion -= config.l1_reg * self.l1_norm + config.l1_reg * self.l2_norm
         train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
+        session.run(tf.initialize_all_variables())
         # TODO: gradient clipping
         total_crit = 0.
         n_batches = len(data) / batch_size
@@ -339,6 +341,7 @@ class CRF:
             total_crit += crit
             if i % 50 == 0:
                 train_accuracy = self.accuracy.eval(feed_dict=f_dict)
+                print i, n_batches, train_accuracy, crit
                 print("step %d of %d, training accuracy %f, criterion %f" %
                       (i, n_batches, train_accuracy, crit))
         print 'total crit', total_crit / n_batches

@@ -23,7 +23,7 @@ def fuse_preds(sentence, pred, config):
     return res
 
 
-# tag a full dataset
+# tag a full dataset TODO: ensure compatibility with SequNN class
 def tag_dataset(pre_data, config, params, graph):
     save_num_steps = config.num_steps
     batch_size = config.batch_size
@@ -82,3 +82,4 @@ def train_model(train_data, dev_data, sequ_nn, config, params, graph):
         if i % config.num_predict == config.num_predict - 1:
             preds[i+1] = tag_dataset(dev_data, config, params, graph)
     return (accuracies, preds)
+

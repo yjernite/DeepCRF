@@ -1,9 +1,8 @@
 from pprint import pprint
-
 from random import shuffle
 
 from model_config import *
-from crf_use import *
+from crf_defs import *
 
 ###############################################
 # Load the data                               #
@@ -37,14 +36,29 @@ dev_data_32 = cut_and_pad(dev_data, config)
 
 sess = tf.InteractiveSession()
 
-config.learning_rate = 1e-3
-
-config.l1_reg = 1
-
+### pseudo_ll
+config.learning_rate = 1e-2
+config.l1_reg = 0
 config.l2_list = config.input_features
-config.l2_reg = 2e-2
+config.l2_reg = 1e-2
+
+crf = CRF(config)
+crf.make(config, params)
+sess.run(tf.initialize_all_variables())
+
+for i in range(2):
+    print 'epoch ----------------', i
+    shuffle(train_data_32)
+    crf.train_epoch(train_data_32, config, params, sess, crit_type='pseudo')
+    crf.validate_accuracy(train_data_32, config)
+    crf.validate_accuracy(dev_data_32, config)
+
 
 ### log-likelihood
+config.learning_rate = 1e-3
+config.l1_reg = 1
+config.l2_list = config.input_features
+config.l2_reg = 2e-2
 
 crf = CRF(config)
 crf.make(config, params)
@@ -58,22 +72,3 @@ for i in range(5):
     crf.validate_accuracy(dev_data_32, config)
 
 
-### pseudo_ll
-
-config.learning_rate = 1e-2
-
-config.l1_reg = 0
-
-config.l2_list = config.input_features
-config.l2_reg = 1e-2
-
-crf = CRF(config)
-crf.make(config, params)
-sess.run(tf.initialize_all_variables())
-
-for i in range(5):
-    print 'epoch ----------------', i
-    shuffle(train_data_32)
-    crf.train_epoch(train_data_32, config, params, crit='pseudo_ll')
-    crf.validate_accuracy(train_data_32, config)
-    crf.validate_accuracy(dev_data_32, config)
