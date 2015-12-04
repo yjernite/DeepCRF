@@ -11,17 +11,22 @@ def potentials_layer(in_layer, config, params, reuse=False, name='Potentials'):
     batch_size = int(in_layer.get_shape()[0])
     num_steps = int(in_layer.get_shape()[1])
     input_size = int(in_layer.get_shape()[2])
-    pot_size = config.n_tags ** config.pot_window
     out_shape = [batch_size, num_steps] + [config.n_tags] * config.pot_window
-    if reuse:
-        tf.get_variable_scope().reuse_variables()
-        W_pot = params.W_pot
-        b_pot = params.b_pot
-    else:
-        W_pot = weight_variable([input_size, pot_size], name=name)
-        b_pot = bias_variable([pot_size], name=name)
-    flat_input = tf.reshape(in_layer, [-1, input_size])
-    pre_scores = tf.matmul(flat_input, W_pot) + b_pot
+    #~ pot_size = config.n_tags ** config.pot_window
+    #~ if reuse:
+        #~ tf.get_variable_scope().reuse_variables()
+        #~ W_pot = params.W_pot
+        #~ b_pot = params.b_pot
+    #~ else:
+        #~ W_pot = weight_variable([input_size, pot_size], name=name)
+        #~ b_pot = bias_variable([pot_size], name=name)
+    #~ flat_input = tf.reshape(in_layer, [-1, input_size])
+    #~ pre_scores = tf.matmul(flat_input, W_pot) + b_pot
+    # BOGUS
+    W_pot = False
+    b_pot = False
+    pre_scores = in_layer
+    # /BOGUS
     pots_layer = tf.reshape(pre_scores, out_shape)
     return (pots_layer, W_pot, b_pot)
 
@@ -44,7 +49,8 @@ def pseudo_likelihood(potentials, pot_indices, targets, config):
     pre_cond = tf.nn.softmax(flat_cond)
     conditional = tf.reshape(pre_cond, [batch_size, num_steps, -1])
     # compute pseudo-log-likelihood of sequence
-    return -tf.reduce_sum(targets * tf.log(conditional))
+    p_ll = tf.reduce_sum(targets * tf.log(conditional))
+    return (conditional, p_ll)
 
 
 # dynamic programming part 1: max sum
@@ -158,7 +164,7 @@ def log_partition(potentials, config):
                    for x in tf.split(1, num_steps, potentials)]
     # forward pass
     sum_cell = CRFSumCell(config)
-    state = tf.zeros(pots_shape[:-1])
+    state = tf.zeros([batch_size] + pots_shape[:-1])
     partial_sums = [0] * len(inputs_list)
     for t, input_ in enumerate(inputs_list):
         state = sum_cell(inputs_list[t], state)
@@ -166,9 +172,21 @@ def log_partition(potentials, config):
     # sum at the end
     max_val = tf.reduce_max(state)
     state_exp = tf.exp(state - max_val)
-    log_part = tf.log(tf.reduce_sum(state_exp)) + max_val
+    log_part = tf.log(tf.reduce_sum(tf.reshape(state_exp, [batch_size, -1]), 1)) + max_val
     return log_part
 
+
+# compute the log to get the log-likelihood
+def log_score(potentials, window_indices, mask, config):
+    batch_size = int(potentials.get_shape()[0])
+    num_steps = int(potentials.get_shape()[1])
+    pots_shape = map(int, potentials.get_shape()[2:])
+    flat_pots = tf.reshape(potentials, [-1])
+    flat_scores = tf.gather(flat_pots, window_indices)
+    scores = tf.reshape(flat_scores, [batch_size, num_steps])
+    scores = tf.mul(scores, mask)
+    return tf.reduce_sum(scores, 1)
+    
 
 # TODO: alpha-beta rec
 def marginals(potentials, config):
