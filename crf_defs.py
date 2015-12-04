@@ -7,11 +7,12 @@ from tensorflow.models.rnn.rnn_cell import *
 ###################################
 
 # takes features and outputs potentials
-def potentials_layer(in_layer, config, params, reuse=False, name='Potentials'):
+def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentials'):
     batch_size = int(in_layer.get_shape()[0])
     num_steps = int(in_layer.get_shape()[1])
     input_size = int(in_layer.get_shape()[2])
-    out_shape = [batch_size, num_steps] + [config.n_tags] * config.pot_window
+    pot_shape = [config.n_tags] * config.pot_window
+    out_shape = [batch_size, num_steps] + pot_shape
     #~ pot_size = config.n_tags ** config.pot_window
     #~ if reuse:
         #~ tf.get_variable_scope().reuse_variables()
@@ -25,9 +26,25 @@ def potentials_layer(in_layer, config, params, reuse=False, name='Potentials'):
     # BOGUS
     W_pot = False
     b_pot = False
-    pre_scores = in_layer
+    reshaped_in = tf.reshape(in_layer, [batch_size, num_steps, config.pot_window, -1])
+    pre_scores = tf.reduce_sum(reshaped_in, 2)
     # /BOGUS
     pots_layer = tf.reshape(pre_scores, out_shape)
+    # define potentials for padding tokens
+    padding_pot = np.zeros(pot_shape)
+    num = config.pot_window / 2
+    idx = [slice(None)] * num + [0] + [slice(None)] * num
+    padding_pot[idx] += 10000
+    pad_pot = tf.convert_to_tensor(padding_pot, tf.float32)
+    pad_pots = tf.expand_dims(tf.expand_dims(pad_pot, 0), 0)
+    pad_pots = tf.tile(pad_pots, [batch_size, num_steps] + [1] * config.pot_window)
+    # expand mask
+    mask_a = mask
+    for _ in range(config.pot_window):
+        mask_a = tf.expand_dims(mask_a, -1)
+    mask_a = tf.tile(mask_a, [1] + pot_shape)
+    # combine
+    pots_layer = (pots_layer * mask_a + (1 - mask_a) * pad_pots)
     return (pots_layer, W_pot, b_pot)
 
 
@@ -98,6 +115,7 @@ def map_assignment(potentials, config):
     # forward pass
     max_cell = CRFMaxCell(config)
     max_ids = [0] * len(inputs_list)
+    # initial state: starts at 0 - 0 - 0 etc...
     state = tf.zeros(pots_shape[:-1])
     for t, input_ in enumerate(inputs_list):
         state, max_id = max_cell(inputs_list[t], state)
@@ -210,4 +228,146 @@ def marginals(potentials, config):
     # TODO: compute marginals
     marginals = 0
     return marginals
+
+
+###################################
+# Making a (deep) CRF             #
+###################################
+class CRF:
+    def __init__(self, config):
+        self.batch_size = config.batch_size
+        self.num_steps = config.num_steps
+        num_features = len(config.input_features)
+        # input_ids <- batch.features
+        self.input_ids = tf.placeholder(tf.int32, shape=[self.batch_size,
+                                                         self.num_steps,
+                                                         num_features])
+        # mask <- batch.mask
+        self.mask = tf.placeholder(tf.float32, [self.batch_size, self.num_steps])
+        # pot_indices <- batch.tag_neighbours_lin
+        self.pot_indices = tf.placeholder(tf.int32,
+                                          [config.batch_size * config.num_steps])
+        # targets <- batch.tags_one_hot
+        self.targets = tf.placeholder(tf.float32, [config.batch_size,
+                                                   config.num_steps,
+                                                   config.n_tags])
+        # window_indices <- batch.tag_windows_lin
+        self.window_indices = tf.placeholder(tf.int32,
+                                             [config.batch_size * config.num_steps])
+
+    def make(self, config, params, reuse=False, name='CRF'):
+        # TODO: add marginal inference
+        with tf.variable_scope(name):
+            if reuse:
+                tf.get_variable_scope().reuse_variables()
+            # out_layer <- output of NN (TODO: add layers)
+            (out_layer, embeddings) = feature_layer(self.input_ids,
+                                                    config, params,
+                                                    reuse=reuse)
+            params.embeddings = embeddings
+            if config.verbose:
+                print('features layer done')
+            self.out_layer = out_layer
+            # pots_layer <- potentials
+            (pots_layer, W_pot, b_pot) = potentials_layer(out_layer,
+                                                          self.mask,
+                                                          config, params,
+                                                          reuse=reuse)
+            params.W_pot = W_pot
+            params.b_pot = b_pot
+            if config.verbose:
+                print('potentials layer done')
+            self.pots_layer = pots_layer
+            # pseudo-log-likelihood
+            conditional, pseudo_ll = pseudo_likelihood(pots_layer,
+                                                       self.pot_indices,
+                                                       self.targets, config)
+            self.pseudo_ll = pseudo_ll
+            # accuracy of p(t_i | t_{i-1}, t_{i+1})
+            correct_cond_pred = tf.equal(tf.argmax(conditional, 2), tf.argmax(self.targets, 2))
+            correct_cond_pred = tf.cast(correct_cond_pred,"float")
+            cond_accuracy = tf.reduce_sum(correct_cond_pred * tf.reduce_sum(targets, 2)) /\
+                            tf.reduce_sum(targets)
+            self.cond_accuracy = cond_accuracy
+            # log-likelihood
+            log_sc = log_score(pots_layer, window_indices, mask, config)
+            log_part = log_partition(pots_layer, config)
+            log_likelihood = log_sc - log_part
+            self.log_likelihood = log_likelihood
+            # L1 regularization
+            self.l1_norm = tf.reduce_sum(tf.zeros([1]))
+            for feat in config.l1_list:
+                self.l1_norm += config.l1_reg * \
+                                tf.reduce_sum(tf.abs(params.embeddings[feat]))
+            # L2 regularization
+            self.l2_norm = tf.reduce_sum(tf.zeros([1]))
+            for feat in config.l2_list:
+                self.l2_norm += config.l2_reg * \
+                                tf.reduce_sum(tf.mul(params.embeddings[feat],
+                                                     params.embeddings[feat]))
+            # map assignment and accuracy of map assignment
+            map_tags = map_assignment(pots_layer, config)
+            correct_pred = tf.equal(map_tags, tf.argmax(self.targets, 2))
+            correct_pred = tf.cast(correct_pred,"float")
+            accuracy = tf.reduce_sum(correct_pred * tf.reduce_sum(self.targets, 2)) /\
+                       tf.reduce_sum(self.targets)
+            self.map_tags = map_tags
+            self.accuracy = accuracy
+    
+    def train_epoch(self, data, config, params, crit_type='likelihood'):
+        batch_size = config.batch_size
+        criterion = None
+        if crit_type == 'pseudo':
+            criterion = -self.pseudo_ll
+        else:
+            criterion = -self.log_likelihood
+        criterion -= config.l1_reg * self.l1_norm + config.l1_reg * self.l2_norm
+        train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
+        # TODO: gradient clipping
+        total_crit = 0.
+        n_batches = len(data) / batch_size
+        batch = Batch()
+        for i in range(n_batches):
+            batch.read(data, i * batch_size, config)
+            f_dict = {self.input_ids: batch.features,
+                      self.pot_indices: batch.tag_neighbours_lin,
+                      self.window_indices: batch.tag_windows_lin,
+                      self.mask: batch.mask,
+                      self.targets: batch.tags_one_hot}
+            train_step.run(feed_dict=f_dict)
+            crit = criterion.eval(feed_dict=f_dict)
+            total_crit += crit
+            if i % 50 == 0:
+                train_accuracy = self.accuracy.eval(feed_dict=f_dict)
+                print("step %d of %d, training accuracy %f, criterion %f" %
+                      (i, n_batches, train_accuracy, crit))
+        print 'total crit', total_crit / n_batches
+        return total_crit / n_batches
+    
+    def validate_accuracy(self, data, config):
+        batch_size = config.batch_size
+        batch = Batch()
+        total_accuracy = 0.
+        total_cond_accuracy = 0.
+        total = 0.
+        for i in range(len(data) / batch_size):
+            batch.read(data, i * batch_size, config)
+            f_dict = {self.input_ids: batch.features,
+                      self.targets: batch.tags_one_hot,
+                      self.pot_indices: batch.tag_neighbours_lin}
+            dev_accuracy = self.accuracy.eval(feed_dict=f_dict)
+            dev_cond_accuracy = self.cond_accuracy.eval(feed_dict=f_dict)
+            pll = self.pseudo_ll.eval(feed_dict=f_dict)
+            ll = self.log_likelihood.eval(feed_dict=f_dict)
+            total_accuracy += dev_accuracy
+            total_cond_accuracy += dev_cond_accuracy
+            total_pll += pll
+            total_ll += ll
+            total += 1
+            if i % 100 == 0:
+                print("%d of %d: \t map accuracy: %f \t cond accuracy: %f \
+                       \t pseudo_ll:  %f \t log_likelihood:  %f" % (i, len(data) / batch_size,
+                                                total_accuracy / total,
+                                                total_cond_accuracy / total))
+        return (total_accuracy / total, total_cond_accuracy / total)
 
