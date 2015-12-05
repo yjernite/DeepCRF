@@ -154,15 +154,15 @@ class Batch:
                 self.tag_windows_one_hot[i] = [[0] * config.n_outcomes] * pre_len + \
                                               self.tag_windows_one_hot[i] + \
                                               [[0] * config.n_outcomes] * post_len
-        mid = config.pot_window / 2
+        mid = config.pot_size
         padded_tags = [[0] * mid + sentence + [0] * mid
                        for sentence in self.tags]
         # get linearized window indices
         self.tag_windows = [[sent[i + j] for j in range(-mid, mid + 1)]
                             for sent in padded_tags
                             for i in range(mid, len(sent) - mid)]
-        n_indices = config.n_tags ** config.pot_window
-        self.tag_windows_lin = [sum([t * (config.n_tags ** (config.pot_window - 1 - i))
+        n_indices = config.n_tags ** (config.pot_size + 1)
+        self.tag_windows_lin = [sum([t * (config.n_tags ** (config.pot_size - i))
                                       for i, t in enumerate(window)]) + i * n_indices
                                 for i, window in enumerate(self.tag_windows)]
         # get linearized potential indices
@@ -170,7 +170,7 @@ class Batch:
                                 for j in range(-mid, 0) + range(1, mid + 1)]
                                for sent in padded_tags
                                for i in range(mid, len(sent) - mid)]
-        max_pow = config.pot_window - 1
+        max_pow = config.pot_size
         n_indices = config.n_tags ** max_pow
         self.tag_neighbours_lin = [sum([idx * (config.n_tags) ** (max_pow - j - 1)
                                         for j, idx in enumerate(token)]) + i * n_indices
@@ -237,7 +237,7 @@ def cut_and_pad(data, config):
     num_steps = config.num_steps
     res = []
     seen = 0
-    pad_len = max(config.pred_window, config.pot_window) / 2
+    pad_len = max(config.pred_window / 2, config.pot_size)
     sen = [pad_token] * pad_len + data[0] + [pad_token] * pad_len
     while seen < len(data):
         if len(sen) < num_steps:
