@@ -24,6 +24,7 @@ class Config:
     def __init__(self, batch_size=20, num_steps=32, learning_rate=1e-2,
                  l1_reg=2e-3, l1_list=[],
                  l2_reg=2e-3, l2_list=[],
+                 optimizer='adagrad', gradient_clip=1e1,
                  features_dim=50, init_words=False, input_features=[],
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
                  use_convo=False, conv_window=5, conv_dim=50,
@@ -39,6 +40,9 @@ class Config:
         self.l1_list = l1_list
         self.l2_reg = l2_reg
         self.l2_list = l2_list
+        # optimization configuration
+        self.optimizer = optimizer
+        self.gradient_clip = gradient_clip
         # input layer
         self.features_dim = features_dim
         self.init_words = init_words
@@ -154,7 +158,7 @@ class Batch:
                 self.tag_windows_one_hot[i] = [[0] * config.n_outcomes] * pre_len + \
                                               self.tag_windows_one_hot[i] + \
                                               [[0] * config.n_outcomes] * post_len
-        mid = config.pot_size
+        mid = config.pot_size - 1
         padded_tags = [[0] * mid + sentence + [0] * mid
                        for sentence in self.tags]
         # get linearized window indices

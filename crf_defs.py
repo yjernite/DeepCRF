@@ -55,15 +55,19 @@ def pseudo_likelihood(potentials, pot_indices, targets, config):
         for j in range(config.pot_size - i - 1):
             reshaped[i] =  tf.expand_dims(reshaped[i], -1)
             multiples[-1 - j] = config.n_tags
-        reshaped[i] = tf.tile(reshaped[i], multiples)
+        reshaped[i] = tf.tile(reshaped[i], multiples[:])
         paddings = [[0, 0], [i, config.pot_size - i - 1]] + [[0, 0]] * (2 * config.pot_size - 1)
-        reshaped[i] = tf.pad(reshaped[i], paddings)
+        reshaped[i] = tf.reshape(tf.pad(reshaped[i], paddings),
+                                 [config.batch_size,
+                                  config.num_steps + config.pot_size - 1,
+                                  -1])
     pre_cond = tf.reduce_sum(tf.pack(reshaped), 0)
     print pre_cond.get_shape()
-    begin_slice = [0] * (2 * config.pot_size + 1)
-    end_slice = [-1] * (2 * config.pot_size + 1)
-    end_slice[1] = config.num_steps
+    begin_slice = [0, 0, 0]
+    end_slice = [-1, config.num_steps, -1]
     pre_cond = tf.slice(pre_cond, begin_slice, end_slice)
+    pre_cond = tf.reshape(pre_cond, [config.batch_size, config.num_steps] +
+                                          [config.n_tags] * (2 * config.pot_size - 1))
     print pre_cond.get_shape()
     # move the current tag to the last dimension
     perm = range(len(pre_cond.get_shape()))
@@ -131,12 +135,11 @@ def map_assignment(potentials, config):
         max_ids[t] = max_id
     # backward pass
     powers = tf.to_int64(map(float, range(config.batch_size))) * \
-             (config.n_tags ** (config.pot_size))
+             (config.n_tags ** (config.pot_size - 1))
     outputs = [-1] * len(inputs_list)
     best_end = tf.argmax(tf.reshape(state, [config.batch_size, -1]), 1)
     current = best_end
-    mid = config.pot_size - 1
-    max_pow = (config.n_tags ** mid)
+    max_pow = (config.n_tags ** (config.pot_size - 2))
     for i, _ in enumerate(outputs):
         outputs[-1 - i] = (current / max_pow) 
         prev_best = tf.gather(tf.reshape(max_ids[-1 - i], [-1]), current + powers)
@@ -173,33 +176,43 @@ class CRFSumCell(RNNCell):
             multiples = [1] * (len(state.get_shape()) + 1)
             multiples[-1] = self.n_tags
             exp_state = tf.tile(tf.expand_dims(state, -1), multiples)
-            added = exp_state + inputs
+            mul = exp_state * inputs
             # log-sum along first dimension (after the batch dim)
-            max_val = tf.reduce_max(added)
-            added_exp = tf.exp(added - max_val)
-            summed_exp = tf.reduce_sum(added_exp, 1)
-            new_state = tf.log(summed_exp) + max_val
+            new_state = tf.reduce_sum(mul, 1)
         return new_state
 
 
 # computing the log partition for a sequence of length config.num_steps
-def log_partition(potentials, config):
+def log_partition(potentials, mask, config):
     batch_size = int(potentials.get_shape()[0])
     num_steps = int(potentials.get_shape()[1])
     pots_shape = map(int, potentials.get_shape()[2:])
+    # pre-compute exponentials w/ numerical stability
+    max_pot = tf.reduce_sum(potentials) - 10
+    potentials_exp = tf.exp(potentials - max_pot)
     inputs_list = [tf.reshape(x, [batch_size] + pots_shape)
-                   for x in tf.split(1, num_steps, potentials)]
+                   for x in tf.split(1, num_steps, potentials_exp)]
+    # expand mask
+    mask_shape = [config.n_tags] * (config.pot_size - 1)
+    mask_a = mask
+    for _ in range(config.pot_size - 1):
+        mask_a = tf.expand_dims(mask_a, -1)
+    mask_a = tf.tile(mask_a, [1, 1] + mask_shape)
+    mask_list = [tf.reshape(x, [batch_size] + mask_shape)
+                   for x in tf.split(1, num_steps, mask_a)]
     # forward pass
     sum_cell = CRFSumCell(config)
-    state = tf.zeros([batch_size] + pots_shape[:-1])
+    state = tf.zeros([batch_size] + pots_shape[:-1]) + 1
     partial_sums = [0] * len(inputs_list)
+    restore = 0
     for t, input_ in enumerate(inputs_list):
-        state = sum_cell(inputs_list[t], state)
+        # msk + (1- msk) -> dealing with padding
+        msk = mask_list[t]
+        state = msk * sum_cell(inputs_list[t], state) + (1 - msk) * state
+        restore += max_pot * tf.reduce_max(msk)
         partial_sums[t] = state
     # sum at the end
-    max_val = tf.reduce_max(state)
-    state_exp = tf.exp(state - max_val)
-    log_part = tf.log(tf.reduce_sum(tf.reshape(state_exp, [batch_size, -1]), 1)) + max_val
+    log_part = tf.log(tf.reduce_sum(tf.reshape(state, [batch_size, -1]), 1) + 1e-25) + restore
     return tf.reduce_sum(log_part)
 
 
@@ -209,11 +222,12 @@ def log_score(potentials, window_indices, mask, config):
     num_steps = int(potentials.get_shape()[1])
     pots_shape = map(int, potentials.get_shape()[2:])
     flat_pots = tf.reshape(potentials, [-1])
-    flat_scores = tf.gather(flat_pots, window_indices)
+    flat_scores = tf.gather(flat_pots,
+                            window_indices / (config.n_tags ** (config.pot_size - 1)))
     scores = tf.reshape(flat_scores, [batch_size, num_steps])
     scores = tf.mul(scores, mask)
     return tf.reduce_sum(scores)
-    
+
 
 # TODO: alpha-beta rec
 def marginals(potentials, config):
@@ -301,7 +315,7 @@ class CRF:
             # log-likelihood
             log_sc = log_score(self.pots_layer, self.window_indices,
                                self.mask, config)
-            log_part = log_partition(self.pots_layer, config)
+            log_part = log_partition(self.pots_layer, self.mask, config)
             log_likelihood = log_sc - log_part
             self.log_likelihood = log_likelihood
             # L1 regularization
@@ -323,16 +337,32 @@ class CRF:
                        tf.reduce_sum(self.targets)
             self.map_tags = map_tags
             self.accuracy = accuracy
+            # different criteria
+            self.criteria = {}
+            self.criteria['pseudo_ll'] = -self.pseudo_ll
+            self.criteria['likelihood'] = -self.log_likelihood
+            norm_penalty = config.l1_reg * self.l1_norm + config.l1_reg * self.l2_norm
+            for k in self.criteria:
+                self.criteria[k] -= norm_penalty
+            # corresponding training steps, gradient clipping
+            optimizers = {}
+            for k in self.criteria:
+                optimizers[k] = tf.train.AdagradOptimizer(config.learning_rate, name='adagrad_' + k)
+            grads_and_vars = {}
+            for k, crit in self.criteria.items():
+                uncapped_g_v = optimizers[k].compute_gradients(crit,
+                                                               tf.trainable_variables())
+                print config.gradient_clip
+                grads_and_vars[k] = [(tf.clip_by_norm(g, config.gradient_clip), v)
+                                     for g, v in uncapped_g_v]
+            self.train_steps = {}
+            for k, g_v in grads_and_vars.items():
+                self.train_steps[k] = optimizers[k].apply_gradients(g_v)
     
     def train_epoch(self, data, config, params, session, crit_type='likelihood'):
         batch_size = config.batch_size
-        criterion = None
-        if crit_type == 'pseudo':
-            criterion = -self.pseudo_ll
-        else:
-            criterion = -self.log_likelihood
-        criterion -= config.l1_reg * self.l1_norm + config.l1_reg * self.l2_norm
-        train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
+        criterion = self.criteria[crit_type]
+        train_step = self.train_steps[crit_type]
         session.run(tf.initialize_all_variables())
         # TODO: gradient clipping
         total_crit = 0.
@@ -350,7 +380,6 @@ class CRF:
             total_crit += crit
             if i % 50 == 0:
                 train_accuracy = self.accuracy.eval(feed_dict=f_dict)
-                print i, n_batches, train_accuracy, crit
                 print("step %d of %d, training accuracy %f, criterion %f" %
                       (i, n_batches, train_accuracy, crit))
         print 'total crit', total_crit / n_batches
@@ -361,12 +390,16 @@ class CRF:
         batch = Batch()
         total_accuracy = 0.
         total_cond_accuracy = 0.
+        total_ll = 0.
+        total_pll = 0.
         total = 0.
         for i in range(len(data) / batch_size):
             batch.read(data, i * batch_size, config)
             f_dict = {self.input_ids: batch.features,
-                      self.targets: batch.tags_one_hot,
-                      self.pot_indices: batch.tag_neighbours_lin}
+                      self.pot_indices: batch.tag_neighbours_lin,
+                      self.window_indices: batch.tag_windows_lin,
+                      self.mask: batch.mask,
+                      self.targets: batch.tags_one_hot}
             dev_accuracy = self.accuracy.eval(feed_dict=f_dict)
             dev_cond_accuracy = self.cond_accuracy.eval(feed_dict=f_dict)
             pll = self.pseudo_ll.eval(feed_dict=f_dict)
@@ -380,6 +413,8 @@ class CRF:
                 print("%d of %d: \t map accuracy: %f \t cond accuracy: %f \
                        \t pseudo_ll:  %f \t log_likelihood:  %f" % (i, len(data) / batch_size,
                                                 total_accuracy / total,
-                                                total_cond_accuracy / total))
+                                                total_cond_accuracy / total,
+                                                total_pll / total,
+                                                total_ll / total))
         return (total_accuracy / total, total_cond_accuracy / total)
 
