@@ -308,7 +308,6 @@ class CRF:
         batch_size = config.batch_size
         criterion = self.criteria[crit_type]
         train_step = self.train_steps[crit_type]
-        session.run(tf.initialize_all_variables())
         # TODO: gradient clipping
         total_crit = 0.
         n_batches = len(data) / batch_size
