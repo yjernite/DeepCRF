@@ -37,11 +37,39 @@ sess = tf.InteractiveSession()
 # make and test the CRF                       #
 ###############################################
 
+
+### log-likelihood
+config.learning_rate = 1e-2
+config.l1_reg = 0
+config.l2_list = config.input_features
+config.l2_reg = 0
+
+config.gradient_clip = 10
+
+config.use_convo = False
+config.features_dim = 2
+
+crf = CRF(config)
+crf.make(config, params)
+sess.run(tf.initialize_all_variables())
+
+for i in range(5):
+    print 'epoch ----------------', i
+    shuffle(train_data_32)
+    crf.train_epoch(train_data_32, config, params, sess)
+    # crf.validate_accuracy(train_data_32, config)
+    crf.validate_accuracy(dev_data_32[:3000], config)
+
+
 ### pseudo_ll
 config.learning_rate = 1e-2
 config.l1_reg = 0
 config.l2_list = config.input_features
 config.l2_reg = 1e-2
+
+config.gradient_clip = 1000
+config.use_convo = True
+config.conv_dim = 200
 
 crf = CRF(config)
 crf.make(config, params)
@@ -53,26 +81,5 @@ for i in range(2):
     crf.train_epoch(train_data_32, config, params, sess, crit_type='pseudo_ll')
     crf.validate_accuracy(train_data_32, config)
     crf.validate_accuracy(dev_data_32, config)
-
-
-### log-likelihood
-config.learning_rate = 1e-2
-config.l1_reg = 0
-config.l2_list = config.input_features
-config.l2_reg = 1e-4
-
-config.gradient_clip = 1
-
-crf = CRF(config)
-crf.make(config, params)
-sess.run(tf.initialize_all_variables())
-
-for i in range(2):
-    print 'epoch ----------------', i
-    shuffle(train_data_32)
-    crf.train_epoch(train_data_32, config, params, sess)
-    crf.validate_accuracy(train_data_32, config)
-    crf.validate_accuracy(dev_data_32, config)
-
 
 

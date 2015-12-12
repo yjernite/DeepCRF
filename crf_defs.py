@@ -3,6 +3,19 @@ from utils import *
 from tensorflow.models.rnn.rnn_cell import *
 
 ###################################
+# Register gradients for my ops   #
+###################################
+
+@tf.RegisterGradient("ChainCRF")
+def _chain_crf_grad(op, grad_partition, grad_marginals):
+    my_grads = grad_partition * op.inputs[3]
+    return [my_grads, None, None, None]  # List of one Tensor, since we have one input
+
+@tf.RegisterGradient("ChainSumProduct")
+def _chain_sum_product_grad(op, grad_forward_sp, grad_backward_sp, grad_gradients):
+    return [None, None]
+
+###################################
 # Building blocks                 #
 ###################################
 
@@ -20,12 +33,15 @@ def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentia
     else:
         W_pot = weight_variable([input_size, pot_card], name=name)
         b_pot = bias_variable([pot_card], name=name)
+        W_pot = tf.clip_by_norm(W_pot, 10)
+        b_pot = tf.clip_by_norm(b_pot, 10)
     flat_input = tf.reshape(in_layer, [-1, input_size])
     pre_scores = tf.matmul(flat_input, W_pot) + b_pot
     pots_layer = tf.reshape(pre_scores, out_shape)
     # define potentials for padding tokens
     padding_pot = np.zeros(pot_shape)
-    padding_pot[..., 0] += 1e4
+    padding_pot[..., 0] += 1e2
+    padding_pot -= 1e2
     pad_pot = tf.convert_to_tensor(padding_pot, tf.float32)
     pad_pots = tf.expand_dims(tf.expand_dims(pad_pot, 0), 0)
     pad_pots = tf.tile(pad_pots,
@@ -148,74 +164,6 @@ def map_assignment(potentials, config):
     return map_tags
 
 
-# dynamic programming part 2: sum product
-class CRFSumCell(RNNCell):
-    """Dynamic programming for CRF"""
-    def __init__(self, config):
-        self._num_units = config.n_tags ** (config.pot_size - 1)
-        self.n_tags = config.n_tags
-    
-    @property
-    def input_size(self):
-        return self._num_units
-
-    @property
-    def output_size(self):
-        return self._num_units
-    
-    @property
-    def state_size(self):
-        return self._num_units
-    
-    def __call__(self, inputs, state, scope=None):
-        """Summation for dynamic programming. Inputs are the
-        log-potentials. States are the results of the summation at the
-        last step"""
-        with tf.variable_scope(scope or type(self).__name__):
-            # add states and log-potentials
-            multiples = [1] * (len(state.get_shape()) + 1)
-            multiples[-1] = self.n_tags
-            exp_state = tf.tile(tf.expand_dims(state, -1), multiples)
-            mul = exp_state * inputs
-            # log-sum along first dimension (after the batch dim)
-            new_state = tf.reduce_sum(mul, 1)
-        return new_state
-
-
-# computing the log partition for a sequence of length config.num_steps
-def log_partition(potentials, mask, config):
-    batch_size = int(potentials.get_shape()[0])
-    num_steps = int(potentials.get_shape()[1])
-    pots_shape = map(int, potentials.get_shape()[2:])
-    # pre-compute exponentials w/ numerical stability
-    max_pot = tf.reduce_sum(potentials) - 10
-    potentials_exp = tf.exp(potentials - max_pot)
-    inputs_list = [tf.reshape(x, [batch_size] + pots_shape)
-                   for x in tf.split(1, num_steps, potentials_exp)]
-    # expand mask
-    mask_shape = [config.n_tags] * (config.pot_size - 1)
-    mask_a = mask
-    for _ in range(config.pot_size - 1):
-        mask_a = tf.expand_dims(mask_a, -1)
-    mask_a = tf.tile(mask_a, [1, 1] + mask_shape)
-    mask_list = [tf.reshape(x, [batch_size] + mask_shape)
-                   for x in tf.split(1, num_steps, mask_a)]
-    # forward pass
-    sum_cell = CRFSumCell(config)
-    state = tf.zeros([batch_size] + pots_shape[:-1]) + 1
-    partial_sums = [0] * len(inputs_list)
-    restore = 0
-    for t, input_ in enumerate(inputs_list):
-        # msk + (1- msk) -> dealing with padding
-        msk = mask_list[t]
-        state = msk * sum_cell(inputs_list[t], state) + (1 - msk) * state
-        restore += max_pot * tf.reduce_max(msk)
-        partial_sums[t] = state
-    # sum at the end
-    log_part = tf.log(tf.reduce_sum(tf.reshape(state, [batch_size, -1]), 1) + 1e-25) + restore
-    return tf.reduce_sum(log_part)
-
-
 # compute the log to get the log-likelihood
 def log_score(potentials, window_indices, mask, config):
     batch_size = int(potentials.get_shape()[0])
@@ -227,30 +175,6 @@ def log_score(potentials, window_indices, mask, config):
     scores = tf.reshape(flat_scores, [batch_size, num_steps])
     scores = tf.mul(scores, mask)
     return tf.reduce_sum(scores)
-
-
-# TODO: alpha-beta rec
-def marginals(potentials, config):
-    batch_size = int(potentials.get_shape()[0])
-    num_steps = int(potentials.get_shape()[1])
-    pots_shape = map(int, potentials.get_shape()[2:])
-    inputs_list = [tf.reshape(x, [batch_size] + pots_shape)
-                   for x in tf.split(1, num_steps, potentials)]
-    # forward and backwar pass
-    sum_cell_f = CRFSumCell(config)
-    sum_cell_b = CRFSumCell(config)
-    state_f = tf.convert_to_tensor(np.zeros(pots_shape[:-1]))
-    state_b = tf.convert_to_tensor(np.zeros(pots_shape[:-1]))
-    partial_sums_f = [0] * len(inputs_list)
-    partial_sums_b = [0] * len(inputs_list)
-    for t, _ in enumerate(inputs_list):
-        state_f = sum_cell_f(inputs_list[t], state_f)
-        partial_sums_f[t] = state_f
-        state_b = sum_cell_b(inputs_list[t], state_b)
-        partial_sums_b[-1 - t] = state_b
-    # TODO: compute marginals
-    marginals = 0
-    return marginals
 
 
 ###################################
@@ -279,7 +203,6 @@ class CRF:
                                              [config.batch_size * config.num_steps])
 
     def make(self, config, params, reuse=False, name='CRF'):
-        # TODO: add marginal inference
         with tf.variable_scope(name):
             if reuse:
                 tf.get_variable_scope().reuse_variables()
@@ -290,6 +213,14 @@ class CRF:
             params.embeddings = embeddings
             if config.verbose:
                 print('features layer done')
+            # convolution
+            if config.use_convo:
+                (out_layer, W_conv, b_conv) = convo_layer(out_layer, config,
+                                                          params, reuse=reuse)
+                params.W_conv = W_conv
+                params.b_conv = b_conv
+                if config.verbose:
+                    print('convolution layer done')
             self.out_layer = out_layer
             # pots_layer <- potentials
             (pots_layer, W_pot, b_pot) = potentials_layer(out_layer,
@@ -315,7 +246,21 @@ class CRF:
             # log-likelihood
             log_sc = log_score(self.pots_layer, self.window_indices,
                                self.mask, config)
-            log_part = log_partition(self.pots_layer, self.mask, config)
+            self.log_sc = log_sc            # useless -> DEBUG
+            pots_list = tf.split(0, config.batch_size, self.pots_layer)
+            pots_list = [tf.squeeze(pots) for pots in pots_list]
+            self.pots_list = pots_list      # useless -> DEBUG
+            dynamic = [tf.user_ops.chain_sum_product(pots)
+                       for pots in pots_list]
+            self.dynamic = dynamic          # useless -> DEBUG
+            pre_crf_list = [(pots, f_sp, b_sp, grads)
+                            for (pots, (f_sp, b_sp, grads)) in zip(pots_list, dynamic)]
+            crf_list = [tf.user_ops.chain_crf(pots, f_sp, b_sp, grads)
+                        for (pots, f_sp, b_sp, grads) in pre_crf_list]
+            log_partitions = tf.pack([part for (part, marg) in crf_list])
+            self.log_partitions = log_partitions    # useless -> DEBUG
+            self.marginals = tf.pack([marg for (part, marg) in crf_list])
+            log_part = tf.reduce_sum(log_partitions)
             log_likelihood = log_sc - log_part
             self.log_likelihood = log_likelihood
             # L1 regularization
@@ -375,6 +320,8 @@ class CRF:
                       self.window_indices: batch.tag_windows_lin,
                       self.mask: batch.mask,
                       self.targets: batch.tags_one_hot}
+            if (i == 0):
+                print('First crit: %f' % (criterion.eval(feed_dict=f_dict),))
             train_step.run(feed_dict=f_dict)
             crit = criterion.eval(feed_dict=f_dict)
             total_crit += crit
