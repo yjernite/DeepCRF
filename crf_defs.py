@@ -7,9 +7,9 @@ from tensorflow.models.rnn.rnn_cell import *
 ###################################
 
 @tf.RegisterGradient("ChainCRF")
-def _chain_crf_grad(op, grad_partition, grad_marginals):
-    my_grads = grad_partition * op.inputs[3]
-    return [my_grads, None, None, None]  # List of one Tensor, since we have one input
+def _chain_crf_grad(op, grad_likelihood, grad_marginals):
+    my_grads = grad_likelihood * op.inputs[4]
+    return [my_grads, None, None, None, None]  # List of one Tensor, since we have one input
 
 @tf.RegisterGradient("ChainSumProduct")
 def _chain_sum_product_grad(op, grad_forward_sp, grad_backward_sp, grad_gradients):
@@ -24,7 +24,7 @@ def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentia
     num_steps = int(in_layer.get_shape()[1])
     input_size = int(in_layer.get_shape()[2])
     pot_shape = [config.n_tags] * config.pot_size
-    out_shape = [config.batch_size,config.num_steps] + pot_shape
+    out_shape = [config.batch_size, config.num_steps] + pot_shape
     pot_card = config.n_tags ** config.pot_size
     if reuse:
         tf.get_variable_scope().reuse_variables()
@@ -194,6 +194,9 @@ class CRF:
         # pot_indices <- batch.tag_neighbours_lin
         self.pot_indices = tf.placeholder(tf.int32,
                                           [config.batch_size * config.num_steps])
+        # tags <- batch.tags
+        self.tags = tf.placeholder(tf.int32,
+                                   [config.batch_size, config.num_steps])
         # targets <- batch.tags_one_hot
         self.targets = tf.placeholder(tf.float32, [config.batch_size,
                                                    config.num_steps,
@@ -219,6 +222,8 @@ class CRF:
                                                           params, reuse=reuse)
                 params.W_conv = W_conv
                 params.b_conv = b_conv
+                #~ (out_layer, W_conv, b_conv) = convo_layer(out_layer, config,
+                                                          #~ params, reuse=reuse)
                 if config.verbose:
                     print('convolution layer done')
             self.out_layer = out_layer
@@ -244,24 +249,23 @@ class CRF:
                             tf.reduce_sum(self.targets)
             self.cond_accuracy = cond_accuracy
             # log-likelihood
-            log_sc = log_score(self.pots_layer, self.window_indices,
-                               self.mask, config)
-            self.log_sc = log_sc            # useless -> DEBUG
             pots_list = tf.split(0, config.batch_size, self.pots_layer)
             pots_list = [tf.squeeze(pots) for pots in pots_list]
-            self.pots_list = pots_list      # useless -> DEBUG
-            dynamic = [tf.user_ops.chain_sum_product(pots)
-                       for pots in pots_list]
+            tags_list = tf.split(0, config.batch_size, self.tags)
+            tags_list = [tf.squeeze(tags) for tags in tags_list]
+            args_list = zip(pots_list, tags_list)
+            self.args_list = args_list      # useless -> DEBUG
+            dynamic = [tf.user_ops.chain_sum_product(pots, tags)
+                       for pots, tags in args_list]
             self.dynamic = dynamic          # useless -> DEBUG
-            pre_crf_list = [(pots, f_sp, b_sp, grads)
-                            for (pots, (f_sp, b_sp, grads)) in zip(pots_list, dynamic)]
-            crf_list = [tf.user_ops.chain_crf(pots, f_sp, b_sp, grads)
-                        for (pots, f_sp, b_sp, grads) in pre_crf_list]
-            log_partitions = tf.pack([part for (part, marg) in crf_list])
-            self.log_partitions = log_partitions    # useless -> DEBUG
-            self.marginals = tf.pack([marg for (part, marg) in crf_list])
-            log_part = tf.reduce_sum(log_partitions)
-            log_likelihood = log_sc - log_part
+            pre_crf_list = [(pots, tags, f_sp, b_sp, grads)
+                            for ((pots, tags), (f_sp, b_sp, grads)) in zip(args_list, dynamic)]
+            crf_list = [tf.user_ops.chain_crf(pots, tags, f_sp, b_sp, grads)
+                        for (pots, tags, f_sp, b_sp, grads) in pre_crf_list]
+            log_likelihoods = tf.pack([ll for (ll, marg) in crf_list])
+            self.log_likelihoods = log_likelihoods    # useless -> DEBUG
+            self.marginals = tf.pack([marg for (ll, marg) in crf_list])
+            log_likelihood = tf.reduce_sum(log_likelihoods)
             self.log_likelihood = log_likelihood
             # L1 regularization
             self.l1_norm = tf.reduce_sum(tf.zeros([1]))
@@ -318,7 +322,8 @@ class CRF:
                       self.pot_indices: batch.tag_neighbours_lin,
                       self.window_indices: batch.tag_windows_lin,
                       self.mask: batch.mask,
-                      self.targets: batch.tags_one_hot}
+                      self.targets: batch.tags_one_hot,
+                      self.tags: batch.tags}
             if (i == 0):
                 print('First crit: %f' % (criterion.eval(feed_dict=f_dict),))
             train_step.run(feed_dict=f_dict)
@@ -345,7 +350,8 @@ class CRF:
                       self.pot_indices: batch.tag_neighbours_lin,
                       self.window_indices: batch.tag_windows_lin,
                       self.mask: batch.mask,
-                      self.targets: batch.tags_one_hot}
+                      self.targets: batch.tags_one_hot,
+                      self.tags: batch.tags}
             dev_accuracy = self.accuracy.eval(feed_dict=f_dict)
             dev_cond_accuracy = self.cond_accuracy.eval(feed_dict=f_dict)
             pll = self.pseudo_ll.eval(feed_dict=f_dict)
@@ -356,8 +362,8 @@ class CRF:
             total_ll += ll
             total += 1
             if i % 100 == 0:
-                print("%d of %d: \t map accuracy: %f \t cond accuracy: %f \
-                       \t pseudo_ll:  %f \t log_likelihood:  %f" % (i, len(data) / batch_size,
+                print("%d of %d: \t map acc: %f \t cond acc: %f \
+                       \t pseudo_ll:  %f  ll:  %f" % (i, len(data) / batch_size,
                                                 total_accuracy / total,
                                                 total_cond_accuracy / total,
                                                 total_pll / total,

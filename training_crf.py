@@ -48,17 +48,18 @@ config.gradient_clip = 1
 
 config.use_convo = True
 config.features_dim = 200
+config.conv_dim = 200
 
 crf = CRF(config)
 crf.make(config, params)
 sess.run(tf.initialize_all_variables())
 
-for i in range(5):
+for i in range(10):
     print 'epoch ----------------', i
     shuffle(train_data_32)
     crf.train_epoch(train_data_32, config, params, sess)
-    # crf.validate_accuracy(train_data_32, config)
-    crf.validate_accuracy(dev_data_32[:4000], config)
+    crf.validate_accuracy(train_data_32, config)
+    crf.validate_accuracy(dev_data_32, config)
 
 
 ### pseudo_ll
@@ -75,11 +76,11 @@ crf = CRF(config)
 crf.make(config, params)
 sess.run(tf.initialize_all_variables())
 
-for i in range(5):
+for i in range(10):
     print 'epoch ----------------', i
     shuffle(train_data_32)
     crf.train_epoch(train_data_32, config, params, sess, crit_type='pseudo_ll')
-    # crf.validate_accuracy(train_data_32, config)
-    crf.validate_accuracy(dev_data_32[:4000], config)
+    crf.validate_accuracy(train_data_32, config)
+    crf.validate_accuracy(dev_data_32, config)
 
 

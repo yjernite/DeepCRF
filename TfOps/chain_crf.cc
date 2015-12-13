@@ -3,10 +3,11 @@
 
 REGISTER_OP("ChainCRF")
     .Input("log_potentials: float32")
+    .Input("tags: int32")
     .Input("forward_sp: float32")
     .Input("backward_sp: float32")
     .Input("gradients: float32")
-    .Output("log_partition: float32")
+    .Output("log_likelihood: float32")
     .Output("marginals: float32")
     .Doc(R"doc(
     A module which performs inference on a chain CRF to obtain the
@@ -35,13 +36,16 @@ class ChainCRFOp : public OpKernel {
         const Tensor& log_potentials = context->input(0);
         auto log_pots = log_potentials.tensor<float, 3>(); // TODO: replace 3
         
-        const Tensor& in_forward_sp = context->input(1);
+        const Tensor& in_tags = context->input(1);
+        auto tags = in_tags.tensor<int, 1>();
+        
+        const Tensor& in_forward_sp = context->input(2);
         auto forward_sp = in_forward_sp.tensor<float, 2>();
         
-        const Tensor& in_backward_sp = context->input(2);
+        const Tensor& in_backward_sp = context->input(3);
         auto backward_sp = in_backward_sp.tensor<float, 2>();
         
-        const Tensor& gradients = context->input(3);
+        const Tensor& gradients = context->input(4);
         
         int seq_length = log_potentials.dim_size(0);
         int n_vars = log_potentials.dim_size(1);
@@ -54,15 +58,17 @@ class ChainCRFOp : public OpKernel {
         marg_shape.AddDim(n_vars);
         
         // Create an output tensor: partition
-        Tensor* out_partition = NULL;
+        Tensor* out_ll = NULL;
         OP_REQUIRES_OK(context, context->allocate_output(0, {1},
-                                                         &out_partition));
+                                                         &out_ll));
         
         // Compute partition function
-        auto partition = out_partition->tensor<float, 1>();
+        auto ll = out_ll->tensor<float, 1>();
         for (int j =0; j < n_vars; j++)
             aux_array[j] = backward_sp(0, j);
-        partition(0) = LogSumExpP(aux_array, n_vars);
+        ll(0) = -LogSumExpP(aux_array, n_vars);
+        for (int i = 1; i < seq_length; i++)
+			ll(0) += log_pots(i, tags(i-1), tags(i));
         
         // Create an output tensor: marginals
         Tensor* out_marginals = NULL;

@@ -3,6 +3,7 @@
 
 REGISTER_OP("ChainSumProduct")
     .Input("log_potentials: float32")
+    .Input("tags: int32")
     .Output("forward_sp: float32")
     .Output("backward_sp: float32")
     .Output("gradients: float32")
@@ -33,6 +34,9 @@ class ChainSumProductOp : public OpKernel {
         // Grab the input tensor
         const Tensor& log_potentials = context->input(0);
         auto log_pots = log_potentials.tensor<float, 3>(); // TODO: replace 3
+        
+        const Tensor& in_tags = context->input(1);
+        auto tags = in_tags.tensor<int, 1>();
         
         int seq_length = log_potentials.dim_size(0);
         int n_vars = log_potentials.dim_size(1);
@@ -78,7 +82,7 @@ class ChainSumProductOp : public OpKernel {
         for (int i = seq_length - 1; i >= 0; i--){
             for (int j =0; j < n_vars; j++){
                 for (int k =0; k < n_vars; k++){
-                    aux_array[k] = backward_sp(i + 1, k) * log_pots(i, j, k);
+                    aux_array[k] = backward_sp(i + 1, k) + log_pots(i, j, k);
                 }
                 backward_sp(i, j) = LogSumExpDP(aux_array, n_vars);
             }
@@ -89,9 +93,12 @@ class ChainSumProductOp : public OpKernel {
         OP_REQUIRES_OK(context, context->allocate_output(2, log_potentials.shape(),
                                                          &out_gradients));
         
-        // Compute gradients
+        // Compute gradients. TODO: deal with first one
         auto gradients = out_gradients->tensor<float, 3>();
-        for (int i = 0; i < seq_length; i++){
+        for (int j = 0; j < n_vars; j++)
+            for (int k = 0; k < n_vars; k++)
+                gradients(0, j, k) = 0;
+        for (int i = 1; i < seq_length; i++){
             for (int j = 0; j < n_vars; j++){
                 for (int k = 0; k < n_vars; k++){
                     gradients(i, j, k) = forward_sp(i, j) + log_pots(i, j, k) + backward_sp(i + 1, k);
@@ -99,11 +106,13 @@ class ChainSumProductOp : public OpKernel {
                 }
             }
             float log_norm = LogSumExpDP(aux_array_grad, n_vars * n_vars);
+            int mask = (tags(i-1) + tags(i)) > 0;
             for (int j = 0; j < n_vars; j++){
                 for (int k = 0; k < n_vars; k++){
-                    gradients(i, j, k) = exp(gradients(i, j, k) - log_norm);
+                    gradients(i, j, k) = -mask * exp(gradients(i, j, k) - log_norm);
                 }
             }
+            gradients(i, tags(i-1), tags(i)) += mask;
         }
     }
 };
