@@ -27,15 +27,25 @@ params = Parameters(init=pre_trained)
 # make and test the NN                        #
 ###############################################
 
-graph = tf.Graph()
+config.learning_rate = 1e-2
+config.l1_reg = 1e-2
+config.l2_list = config.input_features
+config.l2_reg = 1e-2
+
+config.gradient_clip = 1
+
+config.use_convo = True
+config.features_dim = 200
+config.conv_dim = 200
+
 sess = tf.InteractiveSession()
 
-(inputs, targets, preds_layer, criterion, accuracy) =  make_network(config, params)
-train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
+sequ_nn = SequNN(config)
+sequ_nn.make(config, params)
+
 sess.run(tf.initialize_all_variables())
 
-accuracies, preds = train_model(train_data, dev_data, inputs, targets,
-                                train_step, accuracy, config, params, graph)
+accuracies, preds = train_model(train_data, dev_data, sequ_nn, config, params)
 
 predictions = [fuse_preds(sent, pred, config)
                for sent, pred in zip(dev_data, preds[config.num_epochs])]
@@ -51,7 +61,7 @@ if True:
     for i in range(10):
         evaluate(merged, 0.1 * i)
 
-#~ execfile('training.py')
+#~ execfile('training_nn.py')
 
 
 # code to assign computation nodes:

@@ -24,7 +24,7 @@ def fuse_preds(sentence, pred, config):
 
 
 # tag a full dataset TODO: ensure compatibility with SequNN class
-def tag_dataset(pre_data, config, params, graph):
+def tag_dataset(pre_data, config, params):
     save_num_steps = config.num_steps
     batch_size = config.batch_size
     batch = Batch()
@@ -51,12 +51,12 @@ def tag_dataset(pre_data, config, params, graph):
         if n_words > config.num_steps:
             config.num_steps = n_words
             tf.get_variable_scope().reuse_variables()
-            (input_ids, targets, preds_layer, criterion,
-                  accuracy) = make_network(config, params, reuse=True)
-        f_dict = {input_ids: batch.features}
+            sequ_nn_tmp = SequNN(config)
+            sequ_nn_tmp.make(config, params, reuse=True)
+        f_dict = {sequ_nn_tmp.input_ids: batch.features}
         tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
-                     for i, sentence in enumerate(list(preds_layer.eval(feed_dict=f_dict)))]
+                     for i, sentence in enumerate(list(sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)))]
         res += tmp_preds
     # re-order data
     res = res[:len(pre_data)]
@@ -65,11 +65,11 @@ def tag_dataset(pre_data, config, params, graph):
     return res
 
 
-def train_model(train_data, dev_data, sequ_nn, config, params, graph):
-    #~ train_data_32 = cut_and_pad(train_data, config)
-    #~ dev_data_32 = cut_and_pad(dev_data, config)
-    train_data_32 = cut_batches(train_data, config)
-    dev_data_32 = cut_batches(dev_data, config)
+def train_model(train_data, dev_data, sequ_nn, config, params):
+    train_data_32 = cut_and_pad(train_data, config)
+    dev_data_32 = cut_and_pad(dev_data, config)
+    #~ train_data_32 = cut_batches(train_data, config)
+    #~ dev_data_32 = cut_batches(dev_data, config)
     accuracies = []
     preds = {}
     for i in range(config.num_epochs):
@@ -80,6 +80,6 @@ def train_model(train_data, dev_data, sequ_nn, config, params, graph):
         dev_acc = sequ_nn.validate_accuracy(dev_data_32, config)
         accuracies += [(train_acc, dev_acc)]
         if i % config.num_predict == config.num_predict - 1:
-            preds[i+1] = tag_dataset(dev_data, config, params, graph)
+            preds[i+1] = tag_dataset(dev_data, config, params)
     return (accuracies, preds)
 

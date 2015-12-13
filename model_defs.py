@@ -199,15 +199,22 @@ class SequNN:
             params.W_pred = W_pred
             params.b_pred = b_pred
             self.preds_layer = preds_layer
-            (criterion, accuracy) = optim_outputs(preds_layer, config, params)
+            (criterion, accuracy) = optim_outputs(preds_layer, self.targets, config, params)
             if config.verbose:
                 print('output layer done')
             self.criterion = criterion
             self.accuracy = accuracy
+            # optimization
+            optimizer = tf.train.AdagradOptimizer(config.learning_rate,
+                                                  name='adagrad')
+            uncapped_g_v = optimizer.compute_gradients(criterion,
+                                                       tf.trainable_variables())
+            grads_and_vars = [(tf.clip_by_norm(g, config.gradient_clip), v)
+                              for g, v in uncapped_g_v]
+            self.train_step = optimizer.apply_gradients(grads_and_vars)
     
-    def train_epoch(self, data, train_step, config, params):
+    def train_epoch(self, data, config, params):
         batch_size = config.batch_size
-        train_step = tf.train.AdagradOptimizer(config.learning_rate).minimize(criterion)
         batch = Batch()
         for i in range(len(data) / batch_size):
             batch.read(data, i * batch_size, config)
@@ -218,7 +225,7 @@ class SequNN:
                 print("step %d of %d, training accuracy %f, Lemma_l1 %f" %
                       (i, len(data) / batch_size, train_accuracy,
                        tf.reduce_sum(tf.abs(params.embeddings['lemma'])).eval()))
-            train_step.run(feed_dict=f_dict)
+            self.train_step.run(feed_dict=f_dict)
     
     def validate_accuracy(self, data, config):
         batch_size = config.batch_size
