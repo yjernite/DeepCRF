@@ -25,9 +25,9 @@ def fuse_preds(sentence, pred, config):
 
 # tag a full dataset TODO: ensure compatibility with SequNN class
 def tag_dataset(pre_data, config, params, mod_type):
-	sequ_nn_tmp = None
-	crf_tmp = None
-	preds_layer_output = None
+    sequ_nn_tmp = None
+    crf_tmp = None
+    preds_layer_output = None
     save_num_steps = config.num_steps
     batch_size = config.batch_size
     batch = Batch()
@@ -55,22 +55,22 @@ def tag_dataset(pre_data, config, params, mod_type):
             config.num_steps = n_words
             tf.get_variable_scope().reuse_variables()
             if mod_type == 'sequ_nn':
-				sequ_nn_tmp = SequNN(config)
-				sequ_nn_tmp.make(config, params, reuse=True)
-			elif mod_type == 'CRF':
-				crf_tmp = CRF(config)
-				crf_tmp.make(config, params, reuse=True)
-		if mod_type == 'sequ_nn':
-			f_dict = {sequ_nn_tmp.input_ids: batch.features}
-			preds_layer_output = sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)
-		elif mod_type == 'CRF':
-			f_dict = {crf_tmp.input_ids: batch.features,
+                sequ_nn_tmp = SequNN(config)
+                sequ_nn_tmp.make(config, params, reuse=True)
+            elif mod_type == 'CRF':
+                crf_tmp = CRF(config)
+                crf_tmp.make(config, params, reuse=True)
+        if mod_type == 'sequ_nn':
+            f_dict = {sequ_nn_tmp.input_ids: batch.features}
+            preds_layer_output = sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)
+        elif mod_type == 'CRF':
+            f_dict = {crf_tmp.input_ids: batch.features,
                       crf_tmp.pot_indices: batch.tag_neighbours_lin,
                       crf_tmp.window_indices: batch.tag_windows_lin,
                       crf_tmp.mask: batch.mask,
                       crf_tmp.targets: batch.tags_one_hot,
                       crf_tmp.tags: batch.tags}
-			preds_layer_output = crf_tmp.marginals.eval(feed_dict=f_dict)
+            preds_layer_output = crf_tmp.marginals.eval(feed_dict=f_dict)
         tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
                      for i, sentence in enumerate(list(preds_layer_output))]
