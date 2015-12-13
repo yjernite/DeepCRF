@@ -1,4 +1,4 @@
-from model_defs import *
+from nn_defs import *
 from utils import *
 from tensorflow.models.rnn.rnn_cell import *
 

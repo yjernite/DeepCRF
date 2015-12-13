@@ -1,8 +1,8 @@
 from random import shuffle
 
 from utils import *
-from model_defs import *
-
+from nn_defs import *
+from crf_defs import *
 
 ###############################################
 # model usage functions                          #
