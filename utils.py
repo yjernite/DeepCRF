@@ -153,9 +153,9 @@ class Batch:
                                    self.features[i] + \
                                    [range(num_features)] * post_len
                 self.tags[i] = [0] * pre_len + self.tags[i] + [0] * post_len
-                self.tags_one_hot[i] = [[0] * config.n_outcomes] * pre_len + \
+                self.tags_one_hot[i] = [[0] * config.n_tags] * pre_len + \
                                        self.tags_one_hot[i] + \
-                                       [[0] * config.n_outcomes] * post_len
+                                       [[0] * config.n_tags] * post_len
                 self.tag_windows_one_hot[i] = [[0] * config.n_outcomes] * pre_len + \
                                               self.tag_windows_one_hot[i] + \
                                               [[0] * config.n_outcomes] * post_len

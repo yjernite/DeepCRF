@@ -49,11 +49,13 @@ config.use_convo = True
 config.features_dim = 200
 config.conv_dim = 200
 
+config.optimizer = 'adam'
+
 crf = CRF(config)
 crf.make(config, params)
 sess.run(tf.initialize_all_variables())
 
-accuracies, preds = train_model(train_data, dev_data, sequ_nn, config, params, 'sequ_nn')
+accuracies, preds = train_model(train_data, dev_data, crf, config, params, 'CRF')
 
 predictions = [fuse_preds(sent, pred, config)
                for sent, pred in zip(dev_data, preds[config.num_epochs])]

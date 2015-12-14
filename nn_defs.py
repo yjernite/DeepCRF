@@ -199,15 +199,32 @@ class SequNN:
             params.W_pred = W_pred
             params.b_pred = b_pred
             self.preds_layer = preds_layer
-            (criterion, accuracy) = optim_outputs(preds_layer, self.targets, config, params)
+            (cross_entropy, accuracy) = optim_outputs(preds_layer, self.targets, config, params)
             if config.verbose:
                 print('output layer done')
-            self.criterion = criterion
             self.accuracy = accuracy
+            # L1 regularization
+            self.l1_norm = tf.reduce_sum(tf.zeros([1]))
+            for feat in config.l1_list:
+                self.l1_norm += config.l1_reg * \
+                                tf.reduce_sum(tf.abs(params.embeddings[feat]))
+            # L2 regularization
+            self.l2_norm = tf.reduce_sum(tf.zeros([1]))
+            for feat in config.l2_list:
+                self.l2_norm += config.l2_reg * \
+                                tf.reduce_sum(tf.mul(params.embeddings[feat],
+                                                     params.embeddings[feat]))
+            norm_penalty = config.l1_reg * self.l1_norm + config.l1_reg * self.l2_norm
+            criterion = cross_entropy + norm_penalty
+            self.criterion = criterion
             # optimization
-            optimizer = tf.train.AdagradOptimizer(config.learning_rate,
-                                                  name='adagrad')
-            uncapped_g_v = optimizer.compute_gradients(criterion,
+            if config.optimizer == 'adagrad':
+                optimizer = tf.train.AdagradOptimizer(config.learning_rate,
+                                                      name='adagrad')
+            elif config.optimizer == 'adam':
+                optimizer = tf.train.AdamOptimizer(config.learning_rate,
+                                                   name='adam')
+            uncapped_g_v = optimizer.compute_gradients(self.criterion,
                                                        tf.trainable_variables())
             grads_and_vars = [(tf.clip_by_norm(g, config.gradient_clip), v)
                               for g, v in uncapped_g_v]

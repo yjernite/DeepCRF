@@ -42,8 +42,6 @@ def tag_dataset(pre_data, config, params, mod_type):
     # tagging sentences
     res = []
     config.num_steps = 0
-    preds_layer_s = []
-    in_words = []
     print 'processing %d sentences' % ((len(data) / batch_size) * batch_size,)
     for i in range(len(data) / batch_size):
         batch.read(data, i * batch_size, config, fill=True)

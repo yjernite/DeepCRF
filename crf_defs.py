@@ -78,13 +78,13 @@ def pseudo_likelihood(potentials, pot_indices, targets, config):
                                   config.num_steps + config.pot_size - 1,
                                   -1])
     pre_cond = tf.reduce_sum(tf.pack(reshaped), 0)
-    print pre_cond.get_shape()
+    # print pre_cond.get_shape()
     begin_slice = [0, 0, 0]
     end_slice = [-1, config.num_steps, -1]
     pre_cond = tf.slice(pre_cond, begin_slice, end_slice)
     pre_cond = tf.reshape(pre_cond, [config.batch_size, config.num_steps] +
                                           [config.n_tags] * (2 * config.pot_size - 1))
-    print pre_cond.get_shape()
+    # print pre_cond.get_shape()
     # move the current tag to the last dimension
     perm = range(len(pre_cond.get_shape()))
     perm[-1] = perm[-config.pot_size]
@@ -292,16 +292,21 @@ class CRF:
             self.criteria['likelihood'] = -self.log_likelihood
             norm_penalty = config.l1_reg * self.l1_norm + config.l1_reg * self.l2_norm
             for k in self.criteria:
-                self.criteria[k] -= norm_penalty
+                self.criteria[k] += norm_penalty
             # corresponding training steps, gradient clipping
             optimizers = {}
             for k in self.criteria:
-                optimizers[k] = tf.train.AdagradOptimizer(config.learning_rate, name='adagrad_' + k)
+                if config.optimizer == 'adagrad':
+                    optimizers[k] = tf.train.AdagradOptimizer(config.learning_rate,
+                                                              name='adagrad_' + k)
+                elif config.optimizer == 'adam':
+                    optimizers[k] = tf.train.AdamOptimizer(config.learning_rate,
+                                                              name='adam_' + k)
             grads_and_vars = {}
             for k, crit in self.criteria.items():
                 uncapped_g_v = optimizers[k].compute_gradients(crit,
                                                                tf.trainable_variables())
-                print config.gradient_clip
+                # print config.gradient_clip
                 grads_and_vars[k] = [(tf.clip_by_norm(g, config.gradient_clip), v)
                                      for g, v in uncapped_g_v]
             self.train_steps = {}
