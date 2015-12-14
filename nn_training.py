@@ -1,8 +1,7 @@
 from pprint import pprint
-
 from model_config import *
-from model_defs import *
 from model_use import *
+from nn_defs import *
 
 ###############################################
 # Load the data                               #
@@ -45,7 +44,7 @@ sequ_nn.make(config, params)
 
 sess.run(tf.initialize_all_variables())
 
-accuracies, preds = train_model(train_data, dev_data, sequ_nn, config, params)
+accuracies, preds = train_model(train_data, dev_data, sequ_nn, config, params, 'sequ_nn')
 
 predictions = [fuse_preds(sent, pred, config)
                for sent, pred in zip(dev_data, preds[config.num_epochs])]
@@ -61,7 +60,7 @@ if True:
     for i in range(10):
         evaluate(merged, 0.1 * i)
 
-#~ execfile('training_nn.py')
+#~ execfile('nn_training.py')
 
 
 # code to assign computation nodes:

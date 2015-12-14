@@ -308,10 +308,10 @@ class CRF:
             for k, g_v in grads_and_vars.items():
                 self.train_steps[k] = optimizers[k].apply_gradients(g_v)
     
-    def train_epoch(self, data, config, params, session, crit_type='likelihood'):
+    def train_epoch(self, data, config, params):
         batch_size = config.batch_size
-        criterion = self.criteria[crit_type]
-        train_step = self.train_steps[crit_type]
+        criterion = self.criteria[config.criterion]
+        train_step = self.train_steps[config.criterion]
         # TODO: gradient clipping
         total_crit = 0.
         n_batches = len(data) / batch_size

@@ -1,7 +1,6 @@
 from pprint import pprint
-from random import shuffle
-
 from model_config import *
+from model_use import *
 from crf_defs import *
 
 ###############################################
@@ -54,33 +53,29 @@ crf = CRF(config)
 crf.make(config, params)
 sess.run(tf.initialize_all_variables())
 
-for i in range(10):
-    print 'epoch ----------------', i
-    shuffle(train_data_32)
-    crf.train_epoch(train_data_32, config, params, sess)
-    crf.validate_accuracy(train_data_32, config)
-    crf.validate_accuracy(dev_data_32, config)
+accuracies, preds = train_model(train_data, dev_data, sequ_nn, config, params, 'sequ_nn')
 
+predictions = [fuse_preds(sent, pred, config)
+               for sent, pred in zip(dev_data, preds[config.num_epochs])]
 
-### pseudo_ll
-config.learning_rate = 1e-2
-config.l1_reg = 0
-config.l2_list = config.input_features
-config.l2_reg = 1e-2
+merged = merge(predictions, dev_spans)
 
-config.gradient_clip = 1000
-config.use_convo = True
-config.conv_dim = 200
+if True:
+    print '##### Parameters'
+    pprint(config.to_string().splitlines())
+    print '##### Train/dev accuracies'
+    pprint(accuracies)
+    print '##### P-R-F curves'
+    for i in range(10):
+        evaluate(merged, 0.1 * i)
 
-crf = CRF(config)
-crf.make(config, params)
-sess.run(tf.initialize_all_variables())
+#~ execfile('crf_training.py')
 
-for i in range(10):
-    print 'epoch ----------------', i
-    shuffle(train_data_32)
-    crf.train_epoch(train_data_32, config, params, sess, crit_type='pseudo_ll')
-    crf.validate_accuracy(train_data_32, config)
-    crf.validate_accuracy(dev_data_32, config)
+#~ for i in range(10):
+    #~ print 'epoch ----------------', i
+    #~ shuffle(train_data_32)
+    #~ crf.train_epoch(train_data_32, config, params, sess, crit_type='pseudo_ll')
+    #~ crf.validate_accuracy(train_data_32, config)
+    #~ crf.validate_accuracy(dev_data_32, config)
 
 

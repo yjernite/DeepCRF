@@ -5,7 +5,7 @@ from model_defs import *
 
 
 ###############################################
-# NN usage functions                          #
+# model usage functions                          #
 ###############################################
 # combines a sentence with the predicted marginals
 def fuse_preds(sentence, pred, config):
@@ -24,7 +24,10 @@ def fuse_preds(sentence, pred, config):
 
 
 # tag a full dataset TODO: ensure compatibility with SequNN class
-def tag_dataset(pre_data, config, params):
+def tag_dataset(pre_data, config, params, mod_type):
+	sequ_nn_tmp = None
+	crf_tmp = None
+	preds_layer_output = None
     save_num_steps = config.num_steps
     batch_size = config.batch_size
     batch = Batch()
@@ -51,12 +54,26 @@ def tag_dataset(pre_data, config, params):
         if n_words > config.num_steps:
             config.num_steps = n_words
             tf.get_variable_scope().reuse_variables()
-            sequ_nn_tmp = SequNN(config)
-            sequ_nn_tmp.make(config, params, reuse=True)
-        f_dict = {sequ_nn_tmp.input_ids: batch.features}
+            if mod_type == 'sequ_nn':
+				sequ_nn_tmp = SequNN(config)
+				sequ_nn_tmp.make(config, params, reuse=True)
+			elif mod_type == 'CRF':
+				crf_tmp = CRF(config)
+				crf_tmp.make(config, params, reuse=True)
+		if mod_type == 'sequ_nn':
+			f_dict = {sequ_nn_tmp.input_ids: batch.features}
+			preds_layer_output = sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)
+		elif mod_type == 'CRF':
+			f_dict = {crf_tmp.input_ids: batch.features,
+                      crf_tmp.pot_indices: batch.tag_neighbours_lin,
+                      crf_tmp.window_indices: batch.tag_windows_lin,
+                      crf_tmp.mask: batch.mask,
+                      crf_tmp.targets: batch.tags_one_hot,
+                      crf_tmp.tags: batch.tags}
+			preds_layer_output = crf_tmp.marginals.eval(feed_dict=f_dict)
         tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
-                     for i, sentence in enumerate(list(sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)))]
+                     for i, sentence in enumerate(list(preds_layer_output))]
         res += tmp_preds
     # re-order data
     res = res[:len(pre_data)]
@@ -65,7 +82,7 @@ def tag_dataset(pre_data, config, params):
     return res
 
 
-def train_model(train_data, dev_data, sequ_nn, config, params):
+def train_model(train_data, dev_data, model, config, params, mod_type):
     train_data_32 = cut_and_pad(train_data, config)
     dev_data_32 = cut_and_pad(dev_data, config)
     #~ train_data_32 = cut_batches(train_data, config)
@@ -75,11 +92,11 @@ def train_model(train_data, dev_data, sequ_nn, config, params):
     for i in range(config.num_epochs):
         print i
         shuffle(train_data_32)
-        sequ_nn.train_epoch(train_data_32, config, params)
-        train_acc = sequ_nn.validate_accuracy(train_data_32, config)
-        dev_acc = sequ_nn.validate_accuracy(dev_data_32, config)
+        model.train_epoch(train_data_32, config, params)
+        train_acc = model.validate_accuracy(train_data_32, config)
+        dev_acc = model.validate_accuracy(dev_data_32, config)
         accuracies += [(train_acc, dev_acc)]
         if i % config.num_predict == config.num_predict - 1:
-            preds[i+1] = tag_dataset(dev_data, config, params)
+            preds[i+1] = tag_dataset(dev_data, config, params, mod_type)
     return (accuracies, preds)
 
