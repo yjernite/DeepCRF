@@ -1,6 +1,7 @@
 # A few utility functions
 import itertools
 import numpy as np
+import tensorflow as tf
 from pprint import pprint
 
 
@@ -23,13 +24,14 @@ def linearize_indices(indices, dims):
 ###############################################
 class Config:
     def __init__(self, batch_size=20, num_steps=32, learning_rate=1e-2,
-                 l1_reg=2e-3, l1_list=[],
-                 l2_reg=2e-3, l2_list=[],
-                 nn_obj_weight=0.1,
-                 optimizer='adagrad', gradient_clip=1e1, criterion='likelihood',
-                 features_dim=50, init_words=False, input_features=[],
+                 l1_reg=1e-2, l1_list=[],
+                 l2_reg=1e-2, l2_list=[],
+                 nn_obj_weight=-1,
+                 optimizer='adam', criterion='likelihood',
+                 gradient_clip=1e0, param_clip=1e2,
+                 features_dim=200, init_words=False, input_features=[],
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
-                 use_convo=False, conv_window=5, conv_dim=50,
+                 use_convo=True, conv_window=5, conv_dim=200,
                  pot_size=1,
                  pred_window=1, tag_list=[],
                  verbose=False, num_epochs=10, num_predict=5):
@@ -44,9 +46,10 @@ class Config:
         self.l2_list = l2_list
         self.nn_obj_weight = nn_obj_weight
         # optimization configuration
-        self.optimizer = optimizer
+        self.optimizer = optimizer          # ['adam', 'adagrad']
+        self.criterion = criterion          # ['likelihood', 'pseudo_ll']
         self.gradient_clip = gradient_clip
-        self.criterion = criterion
+        self.param_clip = param_clip
         # input layer
         self.features_dim = features_dim
         self.init_words = init_words
@@ -290,6 +293,15 @@ def cut_batches(data, config):
            for i in range(num_cuts)]
     res[-1] = res[-1] + [pad_token] * (config.num_steps - len(res[-1]))
     return res
+
+
+# norm functions
+def L1_norm(tensor):
+    return tf.reduce_sum(tf.abs(tensor))
+
+
+def L2_norm(tensor):
+    return tf.reduce_sum(tf.mul(tensor, tensor))
 
 
 ###############################################

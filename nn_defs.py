@@ -104,8 +104,8 @@ def convo_layer(in_layer, config, params, reuse=False, name='Convo'):
         W_conv = weight_variable([conv_window, 1, input_size, output_size],
                                  name=name)
         b_conv = bias_variable([output_size], name=name)
-        W_conv = tf.clip_by_norm(W_conv, 5)
-        b_conv = tf.clip_by_norm(b_conv, 5)
+        W_conv = tf.clip_by_norm(W_conv, config.param_clip)
+        b_conv = tf.clip_by_norm(b_conv, config.param_clip)
     reshaped = tf.reshape(in_layer, [batch_size, num_steps, 1, input_size])
     conv_layer = tf.nn.relu(tf.reshape(conv2d(reshaped, W_conv),
                                        [batch_size, num_steps, output_size],
@@ -125,8 +125,8 @@ def predict_layer(in_layer, config, params, reuse=False, name='Predict'):
     else:
         W_pred = weight_variable([input_size, n_outcomes], name=name)
         b_pred = bias_variable([n_outcomes], name=name)
-        W_pred = tf.clip_by_norm(W_pred, 5)
-        b_pred = tf.clip_by_norm(b_pred, 5)
+        W_pred = tf.clip_by_norm(W_pred, config.param_clip)
+        b_pred = tf.clip_by_norm(b_pred, config.param_clip)
     flat_input = tf.reshape(in_layer, [-1, input_size])
     pre_scores = tf.nn.softmax(tf.matmul(flat_input, W_pred) + b_pred)
     preds_layer = tf.reshape(pre_scores, [batch_size, num_steps, -1])
@@ -138,16 +138,13 @@ def optim_outputs(outcome, targets, config, params):
     num_steps = int(outcome.get_shape()[1])
     n_outputs = int(outcome.get_shape()[2])
     # We are currently using cross entropy as criterion
-    criterion = -tf.reduce_sum(targets * tf.log(outcome))
-    for feat in config.l1_list:
-        criterion += config.l1_reg * \
-                     tf.reduce_sum(tf.abs(params.embeddings[feat]))
+    cross_entropy = tf.reduce_sum(targets * tf.log(outcome))
     # We also compute the per-tag accuracy
     correct_prediction = tf.equal(tf.argmax(outcome, 2), tf.argmax(targets, 2))
     accuracy = tf.reduce_sum(tf.cast(correct_prediction,
                                      "float") * tf.reduce_sum(targets, 2)) /\
         tf.reduce_sum(targets)
-    return (criterion, accuracy)
+    return (cross_entropy, accuracy)
 
 
 class SequNN:
@@ -166,11 +163,17 @@ class SequNN:
     
     def make(self, config, params, reuse=False, name='SequNN'):
         with tf.variable_scope(name):
+            self.l1_norm = tf.reduce_sum(tf.zeros([1]))
+            self.l2_norm = tf.reduce_sum(tf.zeros([1]))
             if reuse:
                 tf.get_variable_scope().reuse_variables()
             (out_layer, embeddings) = feature_layer(self.input_ids, config,
                                                     params, reuse=reuse)
             params.embeddings = embeddings
+            for feat in config.l1_list:
+                self.l1_norm += L1_norm(params.embeddings[feat])
+            for feat in config.l2_list:
+                self.l2_norm += L2_norm(params.embeddings[feat])
             if config.verbose:
                 print('features layer done')
             if config.use_rnn:
@@ -182,6 +185,8 @@ class SequNN:
                                                           params, reuse=reuse)
                 params.W_conv = W_conv
                 params.b_conv = b_conv
+                # self.l1_norm += L1_norm(W_conv) + L1_norm(b_conv)
+                self.l2_norm += L2_norm(W_conv) + L2_norm(b_conv)
                 if config.verbose:
                     print('convolution layer done')
             self.out_layer = out_layer
@@ -189,24 +194,15 @@ class SequNN:
                                                           params, reuse=reuse)
             params.W_pred = W_pred
             params.b_pred = b_pred
+            # self.l1_norm += L1_norm(W_pred) + L1_norm(b_pred)
+            self.l2_norm += L2_norm(W_pred) + L2_norm(b_pred)
             self.preds_layer = preds_layer
             (cross_entropy, accuracy) = optim_outputs(preds_layer, self.targets, config, params)
             if config.verbose:
                 print('output layer done')
             self.accuracy = accuracy
-            # L1 regularization
-            self.l1_norm = tf.reduce_sum(tf.zeros([1]))
-            for feat in config.l1_list:
-                self.l1_norm += config.l1_reg * \
-                                tf.reduce_sum(tf.abs(params.embeddings[feat]))
-            # L2 regularization
-            self.l2_norm = tf.reduce_sum(tf.zeros([1]))
-            for feat in config.l2_list:
-                self.l2_norm += config.l2_reg * \
-                                tf.reduce_sum(tf.mul(params.embeddings[feat],
-                                                     params.embeddings[feat]))
-            norm_penalty = config.l1_reg * self.l1_norm + config.l1_reg * self.l2_norm
-            criterion = cross_entropy + norm_penalty
+            norm_penalty = config.l1_reg * self.l1_norm + config.l2_reg * self.l2_norm
+            criterion = -cross_entropy + norm_penalty
             self.criterion = criterion
             # optimization
             if config.optimizer == 'adagrad':
@@ -230,9 +226,9 @@ class SequNN:
                       self.targets: batch.tag_windows_one_hot}
             if i % 100 == 0:
                 train_accuracy = self.accuracy.eval(feed_dict=f_dict)
-                print("step %d of %d, training accuracy %f, Lemma_l1 %f" %
+                print("step %d of %d, training accuracy %f, l1 %f, l2 %f" %
                       (i, len(data) / batch_size, train_accuracy,
-                       tf.reduce_sum(tf.abs(params.embeddings['lemma'])).eval()))
+                       self.l1_norm.eval(), self.l2_norm.eval()))
             self.train_step.run(feed_dict=f_dict)
     
     def validate_accuracy(self, data, config):

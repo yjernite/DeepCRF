@@ -38,32 +38,23 @@ sess = tf.InteractiveSession()
 
 
 ### log-likelihood
-config.learning_rate = 1e-2
-config.l1_reg = 1e-2
+config.learning_rate = 1e-3
 config.l2_list = config.input_features
-config.l2_reg = 1e-2
-config.nn_obj_weight = 0
 
 config.gradient_clip = 1
-
-config.use_convo = True
-config.features_dim = 200
-config.conv_dim = 200
-
-config.optimizer = 'adam'
-# config.optimizer = 'adagrad'
-# config.criterion = 'pseudo_ll'
+config.param_clip = 25
 
 crf = CRF(config)
 crf.make(config, params_crf)
+
 
 sequ_nn = SequNN(config)
 sequ_nn.make(config, params_nn)
 
 sess.run(tf.initialize_all_variables())
 
-accuracies_nn, preds_nn = train_model(train_data, dev_data, crf, config, params_crf, 'sequ_nn')
-accuracies_crf, preds_crf = train_model(train_data, dev_data, crf, config, params_nn, 'CRF')
+accuracies_nn, preds_nn = train_model(train_data, dev_data, sequ_nn, config, params_nn, 'sequ_nn')
+accuracies_crf, preds_crf = train_model(train_data, dev_data, crf, config, params_crf, 'CRF')
 
 
 crf_predictions = [fuse_preds_crf(sent, pred, config)
@@ -98,11 +89,3 @@ if True:
         evaluate(merged, 0.1 * i)
 
 #~ execfile('crf_training.py')
-
-#~ for i in range(10):
-    #~ print 'epoch ----------------', i
-    #~ shuffle(train_data_32)
-    #~ crf.train_epoch(train_data_32, config, params, sess, crit_type='pseudo_ll')
-    #~ crf.validate_accuracy(train_data_32, config)
-    #~ crf.validate_accuracy(dev_data_32, config)
-

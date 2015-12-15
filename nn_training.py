@@ -31,13 +31,9 @@ config.l1_reg = 1e-2
 config.l2_list = config.input_features
 config.l2_reg = 1e-2
 
-config.gradient_clip = 1
-
 config.use_convo = True
 config.features_dim = 200
 config.conv_dim = 200
-
-config.optimizer = 'adam'
 
 sess = tf.InteractiveSession()
 
@@ -63,9 +59,3 @@ if True:
         evaluate(merged, 0.1 * i)
 
 #~ execfile('nn_training.py')
-
-
-# code to assign computation nodes:
-#~ graph = tf.Graph()
-#~ with graph.as_default():
-    #~ with graph.device(device_for_node):
