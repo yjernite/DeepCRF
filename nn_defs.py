@@ -104,6 +104,8 @@ def convo_layer(in_layer, config, params, reuse=False, name='Convo'):
         W_conv = weight_variable([conv_window, 1, input_size, output_size],
                                  name=name)
         b_conv = bias_variable([output_size], name=name)
+        W_conv = tf.clip_by_norm(W_conv, 5)
+        b_conv = tf.clip_by_norm(b_conv, 5)
     reshaped = tf.reshape(in_layer, [batch_size, num_steps, 1, input_size])
     conv_layer = tf.nn.relu(tf.reshape(conv2d(reshaped, W_conv),
                                        [batch_size, num_steps, output_size],
@@ -123,6 +125,8 @@ def predict_layer(in_layer, config, params, reuse=False, name='Predict'):
     else:
         W_pred = weight_variable([input_size, n_outcomes], name=name)
         b_pred = bias_variable([n_outcomes], name=name)
+        W_pred = tf.clip_by_norm(W_pred, 5)
+        b_pred = tf.clip_by_norm(b_pred, 5)
     flat_input = tf.reshape(in_layer, [-1, input_size])
     pre_scores = tf.nn.softmax(tf.matmul(flat_input, W_pred) + b_pred)
     preds_layer = tf.reshape(pre_scores, [batch_size, num_steps, -1])
@@ -213,7 +217,7 @@ class SequNN:
                                                    name='adam')
             uncapped_g_v = optimizer.compute_gradients(self.criterion,
                                                        tf.trainable_variables())
-            grads_and_vars = [(tf.clip_by_norm(g, config.gradient_clip), v)
+            grads_and_vars = [(tf.clip_by_norm(g, config.gradient_clip), v) if g else (g, v)
                               for g, v in uncapped_g_v]
             self.train_step = optimizer.apply_gradients(grads_and_vars)
     

@@ -34,6 +34,7 @@ def fuse_preds_crf(sentence, pred, config):
         res += [tok_d]
     return res
 
+
 # tag a full dataset TODO: ensure compatibility with SequNN class
 def tag_dataset(pre_data, config, params, mod_type):
     sequ_nn_tmp = None
@@ -73,12 +74,7 @@ def tag_dataset(pre_data, config, params, mod_type):
             f_dict = {sequ_nn_tmp.input_ids: batch.features}
             preds_layer_output = sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)
         elif mod_type == 'CRF':
-            f_dict = {crf_tmp.input_ids: batch.features,
-                      crf_tmp.pot_indices: batch.tag_neighbours_lin,
-                      crf_tmp.window_indices: batch.tag_windows_lin,
-                      crf_tmp.mask: batch.mask,
-                      crf_tmp.targets: batch.tags_one_hot,
-                      crf_tmp.tags: batch.tags}
+            f_dict = make_feed_crf(crf_tmp, batch)
             preds_layer_output = crf_tmp.marginals.eval(feed_dict=f_dict)
         tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]

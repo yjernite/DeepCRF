@@ -1,6 +1,7 @@
 # A few utility functions
 import itertools
 import numpy as np
+from pprint import pprint
 
 
 ###############################################
@@ -24,6 +25,7 @@ class Config:
     def __init__(self, batch_size=20, num_steps=32, learning_rate=1e-2,
                  l1_reg=2e-3, l1_list=[],
                  l2_reg=2e-3, l2_list=[],
+                 nn_obj_weight=0.1,
                  optimizer='adagrad', gradient_clip=1e1, criterion='likelihood',
                  features_dim=50, init_words=False, input_features=[],
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
@@ -40,6 +42,7 @@ class Config:
         self.l1_list = l1_list
         self.l2_reg = l2_reg
         self.l2_list = l2_list
+        self.nn_obj_weight = nn_obj_weight
         # optimization configuration
         self.optimizer = optimizer
         self.gradient_clip = gradient_clip

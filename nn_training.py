@@ -26,7 +26,7 @@ params = Parameters(init=pre_trained)
 # make and test the NN                        #
 ###############################################
 
-config.learning_rate = 1e-3
+config.learning_rate = 1e-2
 config.l1_reg = 1e-2
 config.l2_list = config.input_features
 config.l2_reg = 1e-2

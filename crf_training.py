@@ -20,8 +20,8 @@ if config.init_words:
 else:
     pre_trained = {}
 
-params = Parameters(init=pre_trained)
-
+params_crf = Parameters(init=pre_trained)
+params_nn = Parameters(init=pre_trained)
 
 #~ train_data_32 = cut_batches(train_data, config)
 #~ dev_data_32 = cut_batches(dev_data, config)
@@ -42,6 +42,7 @@ config.learning_rate = 1e-2
 config.l1_reg = 1e-2
 config.l2_list = config.input_features
 config.l2_reg = 1e-2
+config.nn_obj_weight = 0
 
 config.gradient_clip = 1
 
@@ -50,16 +51,40 @@ config.features_dim = 200
 config.conv_dim = 200
 
 config.optimizer = 'adam'
-config.criterion = 'pseudo_ll'
+# config.optimizer = 'adagrad'
+# config.criterion = 'pseudo_ll'
 
 crf = CRF(config)
-crf.make(config, params)
+crf.make(config, params_crf)
+
+sequ_nn = SequNN(config)
+sequ_nn.make(config, params_nn)
+
 sess.run(tf.initialize_all_variables())
 
-accuracies, preds = train_model(train_data, dev_data, crf, config, params, 'CRF')
+accuracies_nn, preds_nn = train_model(train_data, dev_data, crf, config, params_crf, 'sequ_nn')
+accuracies_crf, preds_crf = train_model(train_data, dev_data, crf, config, params_nn, 'CRF')
 
-predictions = [fuse_preds_crf(sent, pred, config)
-               for sent, pred in zip(dev_data, preds[config.num_epochs])]
+
+crf_predictions = [fuse_preds_crf(sent, pred, config)
+                   for sent, pred in zip(dev_data, preds[config.num_epochs])]
+
+nn_predictions = [fuse_preds(sent, pred, config)
+                  for sent, pred in zip(dev_data, preds[config.num_epochs])]
+
+
+def combine_toks(tok_crf, tok_nn):
+    res = {}
+    res['word'] = tok_nn['word']
+    res['label'] = tok_nn['label']
+    for tag in ['B', 'I', 'ID', 'O', 'OD']:
+        res[tag] = max(tok_crf[tag], tok_nn[tag])
+    return res
+
+
+predictions = [[combine_toks(tok_crf, tok_nn)
+                for tok_crf, tok_nn in zip(sent_crf, sent_nn)]
+               for sent_crf, sent_nn in zip (crf_predictions, nn_predictions)]
 
 merged = merge(predictions, dev_spans)
 
