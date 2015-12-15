@@ -4,6 +4,35 @@
 \usepackage{amsfonts}
 \usepackage{amssymb}
 \usepackage{graphicx}
+\usepackage{etoolbox,refcount}
+\usepackage{multicol}
+
+\newcounter{countitems}
+\newcounter{nextitemizecount}
+\newcommand{\setupcountitems}{%
+  \stepcounter{nextitemizecount}%
+  \setcounter{countitems}{0}%
+  \preto\item{\stepcounter{countitems}}%
+}
+\makeatletter
+\newcommand{\computecountitems}{%
+  \edef\@currentlabel{\number\c@countitems}%
+  \label{countitems@\number\numexpr\value{nextitemizecount}-1\relax}%
+}
+\newcommand{\nextitemizecount}{%
+  \getrefnumber{countitems@\number\c@nextitemizecount}%
+}
+\newcommand{\previtemizecount}{%
+  \getrefnumber{countitems@\number\numexpr\value{nextitemizecount}-1\relax}%
+}
+\makeatother    
+\newenvironment{AutoMultiColItemize}{%
+\ifnumcomp{\nextitemizecount}{>}{3}{\begin{multicols}{2}}{}%
+\setupcountitems\begin{itemize}}%
+{\end{itemize}%
+\unskip\computecountitems\ifnumcomp{\previtemizecount}{>}{3}{\end{multicols}}{}}
+
+
 \author{Yacine Jernite}
 \title{Sequence tagging for medical problems detection}
 \begin{document}
@@ -26,7 +55,8 @@
 \label{CRF}
 
  We were previously using a CRF with the following features (and combinations thereof):
- \begin{itemize}
+
+ \begin{AutoMultiColItemize}
  \item word
  \item lemma
  \item pos (part of speech)
@@ -43,7 +73,8 @@
  \item umls\_match\_tag\_full
  \item umls\_match\_tag\_prefix
  \item umls\_match\_tag\_acro
- \end{itemize}
+ \end{AutoMultiColItemize}
+
 
  To predict where the mentions are, I approximate the marginal log-probability of a mention by the average marginal log-probability of its component tags (and the one to the right), and threshold on this marginal log-probability. So the probability of having a contiguous mention ranging from token 2 to token 4, for example, is:
  
@@ -85,7 +116,7 @@
 
   I then first replaced the marginals of output by the CRF in Section \ref{CRF} by the probabilities output by the NN. However, I could not get past an F-measure of 0.7 with this system.
   
-  My next step was then to replace the tag prediction layer by a window prediction layer: instead of giving the probability of a tag, the last layer gives the probability of a tag and its left and right neighbour (125 possibilities). This got me back to the same performance as the CRF.
+  My next step was then to replace the tag prediction layer by a window prediction layer: instead of giving the probability of a tag, the last layer gives the probability of a tag and its left and right neighbour (125 possibilities). This got me back close to the same performance as the CRF (0.763).
 
 \subsubsection{NN-CRF}
 
@@ -105,7 +136,7 @@ I use the Adam optimizer with a learning rate of 0.02 for NN-CRF and 0.001 for S
 
 \subsection{New tagging scheme}
 
-Adding ``head'' tags.
+Adding ``head'' tags. Will expand on that idea later.
 
 \subsection{Combining methods}
 
