@@ -23,6 +23,17 @@ def fuse_preds(sentence, pred, config):
     return res
 
 
+# for CRFs
+def fuse_preds_crf(sentence, pred, config):
+    res = []
+    mid = config.pred_window / 2
+    for tok, scores in zip(sentence, pred):
+        tok_d = dict(zip(config.tag_list, list(scores[1])))
+        tok_d['word'] = tok['word']
+        tok_d['label'] = tok['label'].split('_')[mid]
+        res += [tok_d]
+    return res
+
 # tag a full dataset TODO: ensure compatibility with SequNN class
 def tag_dataset(pre_data, config, params, mod_type):
     sequ_nn_tmp = None

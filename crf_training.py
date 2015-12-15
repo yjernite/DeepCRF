@@ -50,6 +50,7 @@ config.features_dim = 200
 config.conv_dim = 200
 
 config.optimizer = 'adam'
+config.criterion = 'pseudo_ll'
 
 crf = CRF(config)
 crf.make(config, params)
@@ -57,7 +58,7 @@ sess.run(tf.initialize_all_variables())
 
 accuracies, preds = train_model(train_data, dev_data, crf, config, params, 'CRF')
 
-predictions = [fuse_preds(sent, pred, config)
+predictions = [fuse_preds_crf(sent, pred, config)
                for sent, pred in zip(dev_data, preds[config.num_epochs])]
 
 merged = merge(predictions, dev_spans)
@@ -79,5 +80,4 @@ if True:
     #~ crf.train_epoch(train_data_32, config, params, sess, crit_type='pseudo_ll')
     #~ crf.validate_accuracy(train_data_32, config)
     #~ crf.validate_accuracy(dev_data_32, config)
-
 

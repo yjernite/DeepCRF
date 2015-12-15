@@ -11,19 +11,6 @@ from utils import *
 ###############################################
 # NN creation functions                       #
 ###############################################
-class Parameters:
-    def __init__(self, init={}, emb={}, w_c=False, b_c=False, w_p=False,
-                 b_p=False, w_po=False, b_po=False):
-        self.init_dic = init
-        self.embeddings = emb
-        self.W_conv = w_c
-        self.b_conv = b_c
-        self.W_pred = w_p
-        self.b_pred = b_p
-        self.W_pot = w_po
-        self.b_pot = b_po
-
-
 def device_for_node(n):
     if n.type == "MatMul":
         return "/gpu:0"

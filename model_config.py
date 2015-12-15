@@ -16,7 +16,7 @@ def base_rnn_config(input_features, l1_list, tag_list):
 def base_convo_config(input_features, l1_list, tag_list):
     return Config(input_features=input_features, l1_list=l1_list,
                   tag_list=tag_list, use_convo=True,
-                  num_epochs=15, num_predict=5, pred_window=3)
+                  num_epochs=6, num_predict=2, pred_window=3)
 
 
 def base_crf_config(input_features, l1_list, tag_list):
