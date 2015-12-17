@@ -25,7 +25,6 @@ def base_crf_config(input_features, l1_list, tag_list):
                     num_epochs=6, num_predict=2,
                     pred_window=3,
                     pot_size=2)
-    config.features_dim = (config.n_tags ** config.pot_size) * config.pred_window
     return config
 
 

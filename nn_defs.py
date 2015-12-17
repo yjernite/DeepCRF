@@ -50,18 +50,26 @@ def feature_layer(in_layer, config, params, reuse=False):
         param_vars = {}
         for feat in in_features:
             if feat in param_dic:
-                param_vars[feat] = \
-                  tf.Variable(tf.convert_to_tensor(param_dic[feat],
-                                                   dtype=tf.float32),
-                              name=feat + '_embedding',
-                              trainable=False)
+                embeddings = \
+                      tf.Variable(tf.convert_to_tensor(param_dic[feat],
+                                                       dtype=tf.float32),
+                                  name=feat + '_embedding',
+                                  trainable=False)
+                initial = tf.truncated_normal([int(embeddings.get_shape()[1]),
+                                               features_dim], stddev=0.1)
+                transform_matrix = tf.Variable(initial,
+                                               name=feat + '_transform')
+                clipped_transform = tf.clip_by_norm(transform_matrix,
+                                                    config.param_clip)
+                param_vars[feat] = tf.matmul(embeddings, clipped_transform)
             else:
                 shape = [len(feature_mappings[feat]['reverse']), features_dim]
                 initial = tf.truncated_normal(shape, stddev=0.1)
                 param_vars[feat] = tf.Variable(initial,
                                                name=feat + '_embedding')
     params = [param_vars[feat] for feat in in_features]
-    input_embeddings = tf.nn.embedding_lookup(params, input_ids, name='lookup')
+    input_embeddings = tf.nn.embedding_lookup(params, input_ids,
+                                              name='lookup')
     # add and return
     embedding_layer = tf.reduce_sum(input_embeddings, 2)
     return (embedding_layer, param_vars)
