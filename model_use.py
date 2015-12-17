@@ -75,8 +75,12 @@ def tag_dataset(pre_data, config, params, mod_type):
             preds_layer_output = sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)
         elif mod_type == 'CRF':
             f_dict = make_feed_crf(crf_tmp, batch)
-            preds_layer_output = crf_tmp.marginals.eval(feed_dict=f_dict)
-        tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
+            #~ preds_layer_output = crf_tmp.marginals.eval(feed_dict=f_dict)
+            preds_layer_output = crf_tmp.map_tags.eval(feed_dict=f_dict)
+        #~ tmp_preds = [[(batch.tag_windows_one_hot[i][j].index(1), token_preds)
+                      #~ for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
+                     #~ for i, sentence in enumerate(list(preds_layer_output))]
+        tmp_preds = [[(batch.tags[i][j], token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
                      for i, sentence in enumerate(list(preds_layer_output))]
         res += tmp_preds
@@ -90,8 +94,6 @@ def tag_dataset(pre_data, config, params, mod_type):
 def train_model(train_data, dev_data, model, config, params, mod_type):
     train_data_32 = cut_and_pad(train_data, config)
     dev_data_32 = cut_and_pad(dev_data, config)
-    #~ train_data_32 = cut_batches(train_data, config)
-    #~ dev_data_32 = cut_batches(dev_data, config)
     accuracies = []
     preds = {}
     for i in range(config.num_epochs):

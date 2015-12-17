@@ -353,12 +353,12 @@ class CRF:
         for i in range(n_batches):
             batch.read(data, i * batch_size, config)
             f_dict = make_feed_crf(self, batch)
-            if (i == 0):
+            if config.verbose and (i == 0):
                 print('First crit: %f' % (criterion.eval(feed_dict=f_dict),))
             train_step.run(feed_dict=f_dict)
             crit = criterion.eval(feed_dict=f_dict)
             total_crit += crit
-            if i % 50 == 0:
+            if config.verbose and i % 50 == 0:
                 train_accuracy = self.accuracy.eval(feed_dict=f_dict)
                 print("step %d of %d, training accuracy %f, criterion %f, ll %f, l1 %f, l2 %f" %
                       (i, n_batches, train_accuracy, crit,

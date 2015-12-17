@@ -307,20 +307,6 @@ def L2_norm(tensor):
 ###############################################
 # NN evaluation functions                     #
 ###############################################
-def treat_spans(spans_file):
-    span_lists = []
-    f = open(spans_file)
-    y = []
-    for line in f:
-        if line.strip() == '':
-            span_lists += [y[:]]
-            y = []
-        else:
-            lsp = line.strip().split()
-            y = y + [(int(lsp[0]), int(lsp[1]), lsp[2])]
-    f.close()
-    return span_lists
-
 
 def find_gold(sentence):
     gold = []
@@ -383,33 +369,58 @@ def read_sentence(sentence):
     return (sentence, find_gold(sentence), find_mentions(sentence))
 
 
-def merge(sentences, spans):
+def tags_to_mentions(tagging):
+    rebuild = []
+    core = []
+    added = []
+    for i, tag in enumerate(tagging):
+        if tag == 'Bp':
+            if len(core) > 0:
+                if len(added) <= 1:
+                    added += [[]]
+                for a in added:
+                        rebuild += [sorted(a[:] + core[:])]
+                core = []
+                added = []
+            added += [[i]]
+        if tag in ['In', 'IDn']:
+            added += [[i]]
+        if tag in ['Ip', 'IDp']:
+            added[-1] += [i]
+        if tag in ['B', 'O'] and len(core) > 0:
+            if len(added) <= 1:
+                added += [[]]
+            for a in added:
+                    rebuild += [sorted(a[:] + core[:])]
+            core = []
+            added = []
+        if tag in ['B', 'I', 'ID']:
+            core += [i]
+    if len(core) > 0:
+        if len(added) <= 1:
+            added += [[]]
+        for a in added:
+                rebuild += [sorted(a[:] + core[:])]
+    return sorted([tuple(x) for x in rebuild])
+
+
+def preds_to_sentences(model_preds, config):
     res = []
-    sent = read_sentence(sentences[0])
-    span = spans[0]
-    for i, sp in enumerate(spans):
-        if i == 0:
-            continue
-        if sp[0] == span[0]:
-            sen = read_sentence(sentences[i])
-            gold = sorted(list(set(sen[1] + sent[1])))
-            sent = (sen[0], gold, sen[2])
-        else:
-            res += [(sent, span)]
-            sent = read_sentence(sentences[i])
-            span = spans[i]
-    res += [(sent, span)]
+    for pred in preds:
+        found = tags_to_mentions([config.tag_list[x[1]] for x in pred])
+        gold = tags_to_mentions([config.tag_list[x[0]] for x in pred])
+        res += [('', gold, tuple([(x, 1) for x in found]))]
     return res
 
 
-def evaluate(merged_sentences, threshold):
+def evaluate(sentences, threshold):
     TP = 0
     FP = 0
     FN = 0
-    for sentence in merged_sentences:
-        true_mentions = sentence[0][1]
+    for sentence in sentences:
+        true_mentions = sentence[1]
         tp = 0
-        for pred in sentence[0][2]:
+        for pred in sentence[2]:
             if pred[1] >= threshold:
                 if pred[0] in true_mentions:
                     tp += 1
@@ -428,3 +439,4 @@ def evaluate(merged_sentences, threshold):
     else:
         f1 =  2 * (prec * recall) / (prec + recall)
     print 'TH:', threshold, '\t', 'P:', prec, '\t', 'R:', recall, '\t', 'F:', f1
+
