@@ -406,7 +406,7 @@ def tags_to_mentions(tagging):
 
 def preds_to_sentences(model_preds, config):
     res = []
-    for pred in preds:
+    for pred in model_preds:
         found = tags_to_mentions([config.tag_list[x[1]] for x in pred])
         gold = tags_to_mentions([config.tag_list[x[0]] for x in pred])
         res += [('', gold, tuple([(x, 1) for x in found]))]
