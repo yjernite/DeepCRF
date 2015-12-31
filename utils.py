@@ -29,7 +29,7 @@ class Config:
                  nn_obj_weight=-1,
                  optimizer='adam', criterion='likelihood',
                  gradient_clip=1e0, param_clip=1e2,
-                 features_dim=200, init_words=False, input_features=[],
+                 features_dim=200, init_words=False, input_features=[], combine='sum',
                  use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
                  use_convo=True, conv_window=5, conv_dim=200,
                  pot_size=1,
@@ -54,6 +54,7 @@ class Config:
         self.features_dim = features_dim
         self.init_words = init_words
         self.input_features = input_features
+        self.combine = combine
         # recurrent layer
         self.use_rnn = use_rnn
         self.rnn_hidden_units = rnn_hidden_units
