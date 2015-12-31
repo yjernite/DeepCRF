@@ -71,7 +71,10 @@ def feature_layer(in_layer, config, params, reuse=False):
     input_embeddings = tf.nn.embedding_lookup(params, input_ids,
                                               name='lookup')
     # add and return
-    embedding_layer = tf.reduce_sum(input_embeddings, 2)
+    if config.combine == 'sum':
+        embedding_layer = tf.reduce_sum(input_embeddings, 2)
+    else:
+        embedding_layer = tf.reduce_max(input_embeddings, 2)
     return (embedding_layer, param_vars)
 
 
