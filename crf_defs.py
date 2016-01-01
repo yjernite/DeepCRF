@@ -77,6 +77,7 @@ def binary_log_pots(in_layer, config, params, reuse=False, name='Binary'):
     flat_input = tf.reshape(in_layer, [-1, input_size])
     pre_scores = tf.matmul(flat_input, W_pot_bin) + b_pot_bin
     bin_pots_layer = tf.reshape(pre_scores, out_shape)
+    print 'made', W_pot_bin
     return (bin_pots_layer, W_pot_bin, b_pot_bin)
 
 
@@ -338,6 +339,8 @@ class CRF:
                                                        params, reuse=reuse)
             params.W_bot_bin = W_p_b
             params.b_pot_bin = b_p_b
+            print W_p_b
+            print params.W_pot_bin
             self.l2_norm += L2_norm(W_p_b) + L2_norm(b_p_b)
             (un_pots, W_p_u, b_p_u) = unary_log_pots(out_layer, self.mask, config,
                                                      params, reuse=reuse)
