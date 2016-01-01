@@ -66,6 +66,7 @@ def binary_log_pots(in_layer, config, params, reuse=False, name='Binary'):
     pot_card = config.n_tags ** 2
     if reuse:
         tf.get_variable_scope().reuse_variables()
+        print params.W_pot_bin
         W_pot_bin = params.W_pot_bin
         b_pot_bin = params.b_pot_bin
     else:
