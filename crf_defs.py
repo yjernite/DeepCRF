@@ -71,10 +71,10 @@ def binary_log_pots(in_layer, config, params, reuse=False, name='Binary'):
     else:
         W_pot_bin = weight_variable([input_size, pot_card], name=name)
         b_pot_bin = bias_variable([pot_card], name=name)
-        W_pot_bin = tf.clip_by_norm(W_pot, config.param_clip)
-        b_pot_bin = tf.clip_by_norm(b_pot, config.param_clip)
+        W_pot_bin = tf.clip_by_norm(W_pot_bin, config.param_clip)
+        b_pot_bin = tf.clip_by_norm(b_pot_bin, config.param_clip)
     flat_input = tf.reshape(in_layer, [-1, input_size])
-    pre_scores = tf.matmul(flat_input, W_pot) + b_pot
+    pre_scores = tf.matmul(flat_input, W_pot_bin) + b_pot_bin
     bin_pots_layer = tf.reshape(pre_scores, out_shape)
     return (bin_pots_layer, W_pot_bin, b_pot_bin)
 
@@ -92,10 +92,10 @@ def unary_log_pots(in_layer, mask, config, params, reuse=False, name='Unary'):
     else:
         W_pot_un = weight_variable([input_size, pot_card], name=name)
         b_pot_un = bias_variable([pot_card], name=name)
-        W_pot_un = tf.clip_by_norm(W_pot, config.param_clip)
-        b_pot_un = tf.clip_by_norm(b_pot, config.param_clip)
+        W_pot_un = tf.clip_by_norm(W_pot_un, config.param_clip)
+        b_pot_un = tf.clip_by_norm(b_pot_un, config.param_clip)
     flat_input = tf.reshape(in_layer, [-1, input_size])
-    pre_scores = tf.matmul(flat_input, W_pot) + b_pot
+    pre_scores = tf.matmul(flat_input, W_pot_un) + b_pot_un
     un_pots_layer = tf.reshape(pre_scores, out_shape)
     # define potentials for padding tokens
     padding_pot = np.zeros(pot_shape) - 1e2
