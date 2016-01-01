@@ -57,6 +57,67 @@ def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentia
     return (pots_layer, W_pot, b_pot)
 
 
+# alternatively: unary + binary
+def binary_log_pots(in_layer, config, params, reuse=False, name='Binary'):
+    num_steps = int(in_layer.get_shape()[1])
+    input_size = int(in_layer.get_shape()[2])
+    pot_shape = [config.n_tags] * 2
+    out_shape = [config.batch_size, config.num_steps] + pot_shape
+    pot_card = config.n_tags ** 2
+    if reuse:
+        tf.get_variable_scope().reuse_variables()
+        W_pot_bin = params.W_pot_bin
+        b_pot_bin = params.b_pot_bin
+    else:
+        W_pot_bin = weight_variable([input_size, pot_card], name=name)
+        b_pot_bin = bias_variable([pot_card], name=name)
+        W_pot_bin = tf.clip_by_norm(W_pot, config.param_clip)
+        b_pot_bin = tf.clip_by_norm(b_pot, config.param_clip)
+    flat_input = tf.reshape(in_layer, [-1, input_size])
+    pre_scores = tf.matmul(flat_input, W_pot) + b_pot
+    bin_pots_layer = tf.reshape(pre_scores, out_shape)
+    return (bin_pots_layer, W_pot_bin, b_pot_bin)
+
+
+def unary_log_pots(in_layer, mask, config, params, reuse=False, name='Unary'):
+    num_steps = int(in_layer.get_shape()[1])
+    input_size = int(in_layer.get_shape()[2])
+    pot_shape = [config.n_tags]
+    out_shape = [config.batch_size, config.num_steps] + pot_shape
+    pot_card = config.n_tags
+    if reuse:
+        tf.get_variable_scope().reuse_variables()
+        W_pot_un = params.W_pot_un
+        b_pot_un = params.b_pot_un
+    else:
+        W_pot_un = weight_variable([input_size, pot_card], name=name)
+        b_pot_un = bias_variable([pot_card], name=name)
+        W_pot_un = tf.clip_by_norm(W_pot, config.param_clip)
+        b_pot_un = tf.clip_by_norm(b_pot, config.param_clip)
+    flat_input = tf.reshape(in_layer, [-1, input_size])
+    pre_scores = tf.matmul(flat_input, W_pot) + b_pot
+    un_pots_layer = tf.reshape(pre_scores, out_shape)
+    # define potentials for padding tokens
+    padding_pot = np.zeros(pot_shape) - 1e2
+    padding_pot[0] = 0
+    pad_pot = tf.convert_to_tensor(padding_pot, tf.float32)
+    pad_pots = tf.expand_dims(tf.expand_dims(pad_pot, 0), 0)
+    pad_pots = tf.tile(pad_pots, [config.batch_size, config.num_steps, 1])
+    # expand mask
+    mask_a = tf.expand_dims(mask, -1)
+    mask_a = tf.tile(mask_a, [1, 1] + pot_shape)
+    # combine
+    un_pots_layer = (un_pots_layer * mask_a + (1 - mask_a) * pad_pots)
+    return (un_pots_layer, W_pot_un, b_pot_un)
+
+
+def log_pots(un_pots_layer, bin_pots_layer, config, params, name='LogPotentials'):
+    expanded_unaries = tf.expand_dims(un_pots_layer, 2)
+    expanded_unaries = tf.tile(expanded_unaries, [1, 1, config.n_tags, 1])
+    pots_layer = expanded_unaries + bin_pots_layer
+    return pots_layer
+
+
 # pseudo-likelihood criterion
 def pseudo_likelihood(potentials, pot_indices, targets, config):
     pots_shape = map(int, potentials.get_shape()[2:])
@@ -264,14 +325,25 @@ class CRF:
                                                           config, params)
             ### CRF
             # potentials
-            (pots_layer, W_pot, b_pot) = potentials_layer(out_layer,
-                                                          self.mask,
-                                                          config, params,
-                                                          reuse=reuse)
-            params.W_pot = W_pot
-            params.b_pot = b_pot
-            # self.l1_norm += L1_norm(W_pot) + L1_norm(b_pot)
-            self.l2_norm += L2_norm(W_pot) + L2_norm(b_pot)
+            #~ (pots_layer, W_pot, b_pot) = potentials_layer(out_layer,
+                                                          #~ self.mask,
+                                                          #~ config, params,
+                                                          #~ reuse=reuse)
+            #~ params.W_pot = W_pot
+            #~ params.b_pot = b_pot
+            #~ # self.l1_norm += L1_norm(W_pot) + L1_norm(b_pot)
+            #~ self.l2_norm += L2_norm(W_pot) + L2_norm(b_pot)
+            (bin_pots, W_p_b, b_p_b) = binary_log_pots(out_layer, config,
+                                                       params, reuse=reuse)
+            params.W_bot_bin = W_p_b
+            params.b_pot_bin = b_p_b
+            self.l2_norm += L2_norm(W_p_b) + L2_norm(b_p_b)
+            (un_pots, W_p_u, b_p_u) = unary_log_pots(out_layer, self.mask, config,
+                                                     params, reuse=reuse)
+            params.W_pot_un = W_p_u
+            params.b_pot_un = b_p_u
+            self.l2_norm += L2_norm(W_p_u) + L2_norm(b_p_u)
+            pots_layer = log_pots(un_pots, bin_pots, config, params)
             if config.verbose:
                 print('potentials layer done')
             self.pots_layer = pots_layer

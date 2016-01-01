@@ -193,7 +193,8 @@ class Batch:
 
 class Parameters:
     def __init__(self, init={}, emb={}, w_c=False, b_c=False, w_p=False,
-                 b_p=False, w_po=False, b_po=False):
+                 b_p=False, w_po=False, b_po=False, w_po_b=False, b_po_b=False,
+                 w_po_u=False, b_po_u=False):
         self.init_dic = init
         self.embeddings = emb
         self.W_conv = w_c
@@ -202,6 +203,10 @@ class Parameters:
         self.b_pred = b_p
         self.W_pot = w_po
         self.b_pot = b_po
+        self.W_pot_bin = w_po_b
+        self.b_pot_bin = b_po_b
+        self.W_pot_un = w_po_u
+        self.b_pot_un = b_po_u
 
 
 def aggregate_labels(sentence, config):

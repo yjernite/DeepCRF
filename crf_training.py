@@ -39,24 +39,6 @@ def main():
         evaluate(sentences, 0.5)
 
 
-    #~ # train
-    #~ accuracies_crf, preds_crf = train_model(train_data, dev_data, crf, config, params_crf, 'CRF')
-    #~ # print results: accuracies
-    #~ print '##### Parameters'
-    #~ pprint(config.to_string().splitlines())
-    #~ print '##### Train/dev accuracies: NN'
-    #~ pprint(accuracies_nn)
-    #~ print '##### Train/dev accuracies: CRF'
-    #~ pprint(accuracies_crf)
-    #~ # print results: F measures
-    #~ for ep in range(config.num_predict, config.num_epochs + 1, config.num_predict):
-        #~ print '---------- epoch', ep
-        #~ # crf_predictions = [fuse_preds_crf(sent, pred, config)
-                           #~ # for sent, pred in zip(dev_data, preds_crf[ep])]
-        #~ sentences = preds_to_sentences(preds_crf[ep], config)
-        #~ evaluate(sentences, 0.5)
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Testing the models for \
                                      various parameter values')
