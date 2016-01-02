@@ -73,7 +73,15 @@ class ChainMaxSumOp : public OpKernel {
                 }
                 MaxMS(aux_array, n_vars, max, max_id);
                 forward_ms(i + 1, k) = max;
-                backward_ms(i + 1, k) = max_id;
+                backward_ms(i, k) = max_id;
+            }
+        }
+        float last_max = forward_ms(seq_length, 0);
+        backward_ms(seq_length, 0) = 0;
+        for (int j = 1; j < n_vars; j++){
+            if (forward_ms(seq_length, j) > last_max){
+                last_max = forward_ms(seq_length, j);
+                backward_ms(seq_length, 0) = j;
             }
         }
         
@@ -92,14 +100,11 @@ class ChainMaxSumOp : public OpKernel {
         for (int i = seq_length - 1; i >= 0; i--){
             for (int j =0; j < n_vars; j++)
                 tagging(i, j) = 0;
-            if (tags(i) == 0){
-                tagging(i, 0) = 1;
+            if (tags(i) == 0)
                 current = 0;
-            }
-            else{
+            else
                 current = backward_ms(i + 1, current);
-                tagging(i, current) = 1;
-            }
+            tagging(i, current) = 1;
         }
     }
 };
