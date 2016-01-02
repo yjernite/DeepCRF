@@ -446,7 +446,7 @@ class CRF:
             total_ll += ll
             total += 1
             if i % 100 == 0:
-                print("%d of %d: \t map acc: %f \t  %f  ll:  %f" % (i, len(data) / batch_size,
+                print("%d of %d: \t map acc: %f \t ll:  %f" % (i, len(data) / batch_size,
                                                 total_accuracy / total, total_ll / total))
         return (total_accuracy / total)
 
