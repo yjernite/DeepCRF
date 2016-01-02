@@ -5,7 +5,7 @@ REGISTER_OP("ChainMaxSum")
     .Input("log_potentials: float32")
     .Input("tags: int32")
     .Output("forward_ms: float32")
-    .Output("backward_ms: float32")
+    .Output("backward_ms: int32")
     .Output("tagging: float32")
     .Doc(R"doc(
     A module which helps with inference on a chain CRF (or MRF) by 
