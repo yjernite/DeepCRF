@@ -6,7 +6,7 @@ from model_config import *
 from model_use import *
 from crf_defs import *
 
-config_file = 'example_config.py'
+config_file = 'Configs/config_00.py'
 config = None
 
 

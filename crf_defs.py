@@ -63,10 +63,9 @@ def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentia
 
 # alternatively: unary + binary
 def binary_log_pots(in_layer, config, params, reuse=False, name='Binary'):
-    num_steps = int(in_layer.get_shape()[1])
     input_size = int(in_layer.get_shape()[2])
     pot_shape = [config.n_tags] * 2
-    out_shape = [config.batch_size, config.num_steps] + pot_shape
+    out_shape = [config.batch_size, -1] + pot_shape
     pot_card = config.n_tags ** 2
     if reuse:
         tf.get_variable_scope().reuse_variables()
@@ -84,10 +83,9 @@ def binary_log_pots(in_layer, config, params, reuse=False, name='Binary'):
 
 
 def unary_log_pots(in_layer, mask, config, params, reuse=False, name='Unary'):
-    num_steps = int(in_layer.get_shape()[1])
     input_size = int(in_layer.get_shape()[2])
     pot_shape = [config.n_tags]
-    out_shape = [config.batch_size, config.num_steps] + pot_shape
+    out_shape = [config.batch_size, -1] + pot_shape
     pot_card = config.n_tags
     if reuse:
         tf.get_variable_scope().reuse_variables()
@@ -102,11 +100,10 @@ def unary_log_pots(in_layer, mask, config, params, reuse=False, name='Unary'):
     pre_scores = tf.matmul(flat_input, W_pot_un) + b_pot_un
     un_pots_layer = tf.reshape(pre_scores, out_shape)
     # define potentials for padding tokens
-    padding_pot = np.zeros(pot_shape) - 1e2
-    padding_pot[0] = 0
-    pad_pot = tf.convert_to_tensor(padding_pot, tf.float32)
-    pad_pots = tf.expand_dims(tf.expand_dims(pad_pot, 0), 0)
-    pad_pots = tf.tile(pad_pots, [config.batch_size, config.num_steps, 1])
+    shape_aux = 0 * mask + 1
+    pad_pots = tf.pack([0 * shape_aux] + [-1e2 * shape_aux
+                                          for _ in range(config.n_tags - 1)])
+    pad_pots = tf.transpose(pad_pots, [1, 2, 0])
     # expand mask
     mask_a = tf.expand_dims(mask, -1)
     mask_a = tf.tile(mask_a, [1, 1] + pot_shape)
@@ -372,10 +369,10 @@ class CRF:
             # map assignment and accuracy of map assignment
             map_tagging = [tf.user_ops.chain_max_sum(pots, tags)
                            for pots, tags in args_list]
-            map_tagging = tf.pack(map_tagging)
-            correct_pred = tf.equal(tf.argmax(map_tagging),
+            map_tagging = tf.pack([tging for f_ms, b_ms, tging in map_tagging])
+            correct_pred = tf.equal(tf.argmax(map_tagging, 2),
                                     tf.argmax(self.targets, 2))
-            correct_pred = tf.cast(correct_pred,"float")
+            correct_pred = tf.cast(correct_pred, "float")
             accuracy = tf.reduce_sum(correct_pred * tf.reduce_sum(self.targets, 2)) /\
                        tf.reduce_sum(self.targets)
             self.map_tagging = map_tagging

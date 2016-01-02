@@ -103,9 +103,9 @@ def bi_lstm_layer(in_layer, config, reuse=False, name='Bi_LSTM'):
 def convo_layer(in_layer, config, params, reuse=False, name='Convo'):
     conv_window = config.conv_window
     output_size = config.conv_dim
-    batch_size = int(in_layer.get_shape()[0])
-    num_steps = int(in_layer.get_shape()[1])
-    input_size = int(in_layer.get_shape()[2])
+    batch_size = config.batch_size # int(in_layer.get_shape()[0])
+    num_steps = -1 # int(in_layer.get_shape()[1])
+    input_size = config.features_dim #int(in_layer.get_shape()[2])
     if reuse:
         tf.get_variable_scope().reuse_variables()
         W_conv = params.W_conv
