@@ -73,7 +73,7 @@ class ChainMaxSumOp : public OpKernel {
                 }
                 MaxMS(aux_array, n_vars, max, max_id);
                 forward_ms(i + 1, k) = max;
-                backward_ms(i, k) = max_id;
+                backward_ms(i + 1, k) = max_id;
             }
         }
         
@@ -89,7 +89,7 @@ class ChainMaxSumOp : public OpKernel {
         // Compute tagging.
         auto tagging = out_tagging->tensor<float, 2>();
         int current = 0;
-        for (int i = seq_length - 1; i > 0; i--){
+        for (int i = seq_length - 1; i >= 0; i--){
             for (int j =0; j < n_vars; j++)
                 tagging(i, j) = 0;
             if (tags(i) == 0){
@@ -97,8 +97,8 @@ class ChainMaxSumOp : public OpKernel {
                 current = 0;
             }
             else{
-                current = backward_ms(i, current);
-                tagging(i - 1, current) = 1;
+                current = backward_ms(i + 1, current);
+                tagging(i, current) = 1;
             }
         }
     }
