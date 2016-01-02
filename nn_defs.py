@@ -36,7 +36,6 @@ def feature_layer(in_layer, config, params, reuse=False):
     in_features = config.input_features
     features_dim = config.features_dim
     batch_size = config.batch_size
-    num_steps = config.num_steps
     feature_mappings = config.feature_maps
     # inputs
     num_features = len(in_features)

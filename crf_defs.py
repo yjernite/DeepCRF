@@ -15,6 +15,10 @@ def _chain_crf_grad(op, grad_likelihood, grad_marginals):
 def _chain_sum_product_grad(op, grad_forward_sp, grad_backward_sp, grad_gradients):
     return [None, None]
 
+@tf.RegisterGradient("ChainMaxSum")
+def _chain_sum_product_grad(op, grad_forward_ms, grad_backward_ms, grad_tagging):
+    return [None, None]
+
 ###################################
 # Building blocks                 #
 ###################################
@@ -347,17 +351,6 @@ class CRF:
             if config.verbose:
                 print('potentials layer done')
             self.pots_layer = pots_layer
-            # pseudo-log-likelihood
-            conditional, pseudo_ll = pseudo_likelihood(pots_layer,
-                                                       self.pot_indices,
-                                                       self.targets, config)
-            self.pseudo_ll = pseudo_ll
-            # accuracy of p(t_i | t_{i-1}, t_{i+1})
-            correct_cond_pred = tf.equal(tf.argmax(conditional, 2), tf.argmax(self.targets, 2))
-            correct_cond_pred = tf.cast(correct_cond_pred,"float")
-            cond_accuracy = tf.reduce_sum(correct_cond_pred * tf.reduce_sum(self.targets, 2)) /\
-                            tf.reduce_sum(self.targets)
-            self.cond_accuracy = cond_accuracy
             # log-likelihood, tensor to list
             pots_list = tf.split(0, config.batch_size, self.pots_layer)
             pots_list = [tf.squeeze(pots) for pots in pots_list]
@@ -377,17 +370,19 @@ class CRF:
             self.log_likelihood = log_likelihood
             self.marginals = tf.pack([marg for (ll, marg) in crf_list])
             # map assignment and accuracy of map assignment
-            map_tags = map_assignment(self.pots_layer, config)
-            correct_pred = tf.equal(map_tags, tf.argmax(self.targets, 2))
+            map_tagging = [tf.user_ops.chain_max_sum(pots, tags)
+                           for pots, tags in args_list]
+            map_tagging = tf.pack(map_tagging)
+            correct_pred = tf.equal(tf.argmax(map_tagging),
+                                    tf.argmax(self.targets, 2))
             correct_pred = tf.cast(correct_pred,"float")
             accuracy = tf.reduce_sum(correct_pred * tf.reduce_sum(self.targets, 2)) /\
                        tf.reduce_sum(self.targets)
-            self.map_tags = map_tags
+            self.map_tagging = map_tagging
             self.accuracy = accuracy
             ### OPTIMIZATION
             # different criteria
             self.criteria = {}
-            self.criteria['pseudo_ll'] = -self.pseudo_ll
             self.criteria['likelihood'] = -self.log_likelihood
             norm_penalty = config.l1_reg * self.l1_norm + config.l2_reg * self.l2_norm
             for k in self.criteria:
@@ -443,28 +438,18 @@ class CRF:
         batch_size = config.batch_size
         batch = Batch()
         total_accuracy = 0.
-        total_cond_accuracy = 0.
         total_ll = 0.
-        total_pll = 0.
         total = 0.
         for i in range(len(data) / batch_size):
             batch.read(data, i * batch_size, config)
             f_dict = make_feed_crf(self, batch)
             dev_accuracy = self.accuracy.eval(feed_dict=f_dict)
-            dev_cond_accuracy = self.cond_accuracy.eval(feed_dict=f_dict)
-            pll = self.pseudo_ll.eval(feed_dict=f_dict)
             ll = self.log_likelihood.eval(feed_dict=f_dict)
             total_accuracy += dev_accuracy
-            total_cond_accuracy += dev_cond_accuracy
-            total_pll += pll
             total_ll += ll
             total += 1
             if i % 100 == 0:
-                print("%d of %d: \t map acc: %f \t cond acc: %f \
-                       \t pseudo_ll:  %f  ll:  %f" % (i, len(data) / batch_size,
-                                                total_accuracy / total,
-                                                total_cond_accuracy / total,
-                                                total_pll / total,
-                                                total_ll / total))
-        return (total_accuracy / total, total_cond_accuracy / total)
+                print("%d of %d: \t map acc: %f \t  %f  ll:  %f" % (i, len(data) / batch_size,
+                                                total_accuracy / total, total_ll / total))
+        return (total_accuracy / total)
 
