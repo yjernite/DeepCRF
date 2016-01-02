@@ -20,7 +20,7 @@ float MaxMS(float nums[], size_t ct, float &max, int &max_id) {
 	max_id = 0;
 	size_t i;
 	for (i = 1 ; i < ct ; i++)
-		if (nums[i] > max_exp){
+		if (nums[i] > max){
 		    max = nums[i];
             max_id = i;
 		}
@@ -90,9 +90,8 @@ class ChainMaxSumOp : public OpKernel {
         auto tagging = out_tagging->tensor<float, 2>();
         int current = 0;
         for (int i = seq_length - 1; i >= 0; i--){
-            for (int j =0; j < n_vars; j++){
+            for (int j =0; j < n_vars; j++)
                 tagging(i, j) = 0;
-            }
             if (tags(i) == 0){
                 tagging(i, 0) = 1;
                 current = 0;
