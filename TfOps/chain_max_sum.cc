@@ -89,7 +89,7 @@ class ChainMaxSumOp : public OpKernel {
         // Compute tagging.
         auto tagging = out_tagging->tensor<float, 2>();
         int current = 0;
-        for (int i = seq_length - 1; i >= 0; i--){
+        for (int i = seq_length - 1; i > 0; i--){
             for (int j =0; j < n_vars; j++)
                 tagging(i, j) = 0;
             if (tags(i) == 0){
@@ -98,7 +98,7 @@ class ChainMaxSumOp : public OpKernel {
             }
             else{
                 current = backward_ms(i, current);
-                tagging(i, current) = 1;
+                tagging(i - 1, current) = 1;
             }
         }
     }
