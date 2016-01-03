@@ -326,14 +326,6 @@ class CRF:
                                                           config, params)
             ### CRF
             # potentials
-            #~ (pots_layer, W_pot, b_pot) = potentials_layer(out_layer,
-                                                          #~ self.mask,
-                                                          #~ config, params,
-                                                          #~ reuse=reuse)
-            #~ params.W_pot = W_pot
-            #~ params.b_pot = b_pot
-            #~ # self.l1_norm += L1_norm(W_pot) + L1_norm(b_pot)
-            #~ self.l2_norm += L2_norm(W_pot) + L2_norm(b_pot)
             (bin_pots, W_p_b, b_p_b) = binary_log_pots(out_layer, config,
                                                        params, reuse=reuse)
             params.W_pot_bin = W_p_b
@@ -415,7 +407,7 @@ class CRF:
         n_batches = len(data) / batch_size
         batch = Batch()
         for i in range(n_batches):
-            batch.read(data, i * batch_size, config)
+            batch.read(data, i * batch_size, config, fill=True)
             f_dict = make_feed_crf(self, batch)
             if config.verbose and (i == 0):
                 print('First crit: %f' % (criterion.eval(feed_dict=f_dict),))
@@ -438,7 +430,7 @@ class CRF:
         total_ll = 0.
         total = 0.
         for i in range(len(data) / batch_size):
-            batch.read(data, i * batch_size, config)
+            batch.read(data, i * batch_size, config, fill=True)
             f_dict = make_feed_crf(self, batch)
             dev_accuracy = self.accuracy.eval(feed_dict=f_dict)
             ll = self.log_likelihood.eval(feed_dict=f_dict)
