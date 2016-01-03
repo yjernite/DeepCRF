@@ -54,14 +54,14 @@ def tag_dataset(pre_data, config, params, mod_type, model):
     for i in range(len(data) / batch_size):
         batch.read(data, i * batch_size, config, fill=True)
         if i % 100 == 0:
-            print 'making features', i, 'of', len(data) / batch_size,
+            print 'making features', i, 'of', len(data) / batch_size
         n_words = len(batch.features[0])
         if mod_type == 'sequ_nn':
             f_dict = {sequ_nn_tmp.input_ids: batch.features}
             preds_layer_output = sequ_nn_tmp.preds_layer.eval(feed_dict=f_dict)
         elif mod_type == 'CRF':
             f_dict = make_feed_crf(model, batch)
-            preds_layer_output = model.map_tagging.eval(feed_dict=f_dict)
+            preds_layer_output = tf.argmax(model.map_tagging, 2).eval(feed_dict=f_dict)
         tmp_preds = [[(batch.tags[i][j], token_preds)
                       for j, token_preds in enumerate(sentence) if 1 in batch.tag_windows_one_hot[i][j]]
                      for i, sentence in enumerate(list(preds_layer_output))]
@@ -100,6 +100,6 @@ def train_model(train_data, dev_data, model, config, params, mod_type):
         dev_acc = model.validate_accuracy(dev_data_ready, config)
         accuracies += [(train_acc, dev_acc)]
         if i % config.num_predict == config.num_predict - 1:
-            preds[i+1] = tag_dataset(dev_data, config, params, mod_type)
+            preds[i+1] = tag_dataset(dev_data, config, params, mod_type, model)
     return (accuracies, preds)
 
