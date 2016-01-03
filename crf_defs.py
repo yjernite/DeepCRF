@@ -260,28 +260,19 @@ class CRF:
         self.num_steps = config.num_steps
         num_features = len(config.input_features)
         # input_ids <- batch.features
-        self.input_ids = tf.placeholder(tf.int32, shape=[self.batch_size,
-                                                         self.num_steps,
-                                                         num_features])
+        self.input_ids = tf.placeholder(tf.int32)
         # mask <- batch.mask
-        self.mask = tf.placeholder(tf.float32, [self.batch_size, self.num_steps])
+        self.mask = tf.placeholder(tf.float32)
         # pot_indices <- batch.tag_neighbours_lin
-        self.pot_indices = tf.placeholder(tf.int32,
-                                          [config.batch_size * config.num_steps])
+        self.pot_indices = tf.placeholder(tf.int32)
         # tags <- batch.tags
-        self.tags = tf.placeholder(tf.int32,
-                                   [config.batch_size, config.num_steps])
+        self.tags = tf.placeholder(tf.int32)
         # targets <- batch.tags_one_hot
-        self.targets = tf.placeholder(tf.float32, [config.batch_size,
-                                                   config.num_steps,
-                                                   config.n_tags])
+        self.targets = tf.placeholder(tf.float32)
         # window_indices <- batch.tag_windows_lin
-        self.window_indices = tf.placeholder(tf.int32,
-                                             [config.batch_size * config.num_steps])
+        self.window_indices = tf.placeholder(tf.int32)
         # nn_targets <- batch.tag_windows_one_hot
-        self.nn_targets = tf.placeholder(tf.float32, shape=[self.batch_size,
-                                                            self.num_steps,
-                                                            config.n_outcomes])
+        self.nn_targets = tf.placeholder(tf.float32)
     
     def make(self, config, params, reuse=False, name='CRF'):
         with tf.variable_scope(name):
