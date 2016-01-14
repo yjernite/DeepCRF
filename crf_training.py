@@ -2,15 +2,15 @@ from pprint import pprint
 import os
 import argparse
 
-from model_config import *
 from model_use import *
 from crf_defs import *
 
-config_file = 'Configs/config_00.py'
+config_file = 'Configs/example_config.py'
 config = None
 
 
 def main():
+    execfile(config_file)
     # load the data
     train_data = read_data(train_file, features, config)
     dev_data = read_data(dev_file, features, config)
@@ -47,6 +47,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.config_file:
         config_file = os.path.abspath(args.config_file)
-    execfile(config_file)
     print 'Starting'
     main()
