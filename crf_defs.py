@@ -1,6 +1,9 @@
-from nn_defs import *
+import tensorflow as tf
+import tensorflow.python.platform
+from tensorflow.models.rnn import rnn
+from tensorflow.models.rnn import rnn_cell
+
 from utils import *
-from tensorflow.models.rnn.rnn_cell import *
 
 ###################################
 # Register gradients for my ops   #
@@ -19,9 +22,108 @@ def _chain_sum_product_grad(op, grad_forward_sp, grad_backward_sp, grad_gradient
 def _chain_sum_product_grad(op, grad_forward_ms, grad_backward_ms, grad_tagging):
     return [None, None]
 
+
 ###################################
-# Building blocks                 #
+# Auxiliary functions             #
 ###################################
+
+def conv2d(x, W):
+    return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+
+
+def weight_variable(shape, name='weight'):
+    initial = tf.truncated_normal(shape, stddev=0.1)
+    return tf.Variable(initial, name=name+'_W')
+
+
+def bias_variable(shape, name='weight'):
+    initial = tf.constant(0.1, shape=shape)
+    return tf.Variable(initial, name=name+'_b')
+
+
+# making a feed dictionary:
+def make_feed_crf(model, batch):
+    f_dict = {model.input_ids: batch.features,
+              model.pot_indices: batch.tag_neighbours_lin,
+              model.window_indices: batch.tag_windows_lin,
+              model.mask: batch.mask,
+              model.targets: batch.tags_one_hot,
+              model.tags: batch.tags,
+              model.nn_targets: batch.tag_windows_one_hot}
+    return f_dict
+
+
+###################################
+# NN layers                       #
+###################################
+
+def feature_layer(in_layer, config, params, reuse=False):
+    in_features = config.input_features
+    features_dim = config.features_dim
+    batch_size = config.batch_size
+    feature_mappings = config.feature_maps
+    # inputs
+    num_features = len(in_features)
+    input_ids = in_layer
+    if reuse:
+        tf.get_variable_scope().reuse_variables()
+        param_vars = params.embeddings
+    # lookup layer
+    else:
+        param_dic = params.init_dic
+        param_vars = {}
+        for feat in in_features:
+            if feat in param_dic:
+                embeddings = \
+                      tf.Variable(tf.convert_to_tensor(param_dic[feat],
+                                                       dtype=tf.float32),
+                                  name=feat + '_embedding',
+                                  trainable=False)
+                initial = tf.truncated_normal([int(embeddings.get_shape()[1]),
+                                               features_dim], stddev=0.1)
+                transform_matrix = tf.Variable(initial,
+                                               name=feat + '_transform')
+                clipped_transform = tf.clip_by_norm(transform_matrix,
+                                                    config.param_clip)
+                param_vars[feat] = tf.matmul(embeddings, clipped_transform)
+            else:
+                shape = [len(feature_mappings[feat]['reverse']), features_dim]
+                initial = tf.truncated_normal(shape, stddev=0.1)
+                param_vars[feat] = tf.Variable(initial,
+                                               name=feat + '_embedding')
+    params = [param_vars[feat] for feat in in_features]
+    input_embeddings = tf.nn.embedding_lookup(params, input_ids,
+                                              name='lookup')
+    # add and return
+    if config.combine == 'sum':
+        embedding_layer = tf.reduce_sum(input_embeddings, 2)
+    else:
+        embedding_layer = tf.reduce_max(input_embeddings, 2)
+    return (embedding_layer, param_vars)
+
+
+def convo_layer(in_layer, config, params, reuse=False, name='Convo'):
+    conv_window = config.conv_window
+    output_size = config.conv_dim
+    batch_size = config.batch_size # int(in_layer.get_shape()[0])
+    num_steps = -1 # int(in_layer.get_shape()[1])
+    input_size = config.features_dim #int(in_layer.get_shape()[2])
+    if reuse:
+        tf.get_variable_scope().reuse_variables()
+        W_conv = params.W_conv
+        b_conv = params.b_conv
+    else:
+        W_conv = weight_variable([conv_window, 1, input_size, output_size],
+                                 name=name)
+        b_conv = bias_variable([output_size], name=name)
+        W_conv = tf.clip_by_norm(W_conv, config.param_clip)
+        b_conv = tf.clip_by_norm(b_conv, config.param_clip)
+    reshaped = tf.reshape(in_layer, [batch_size, num_steps, 1, input_size])
+    conv_layer = tf.nn.relu(tf.reshape(conv2d(reshaped, W_conv),
+                                       [batch_size, num_steps, output_size],
+                                       name=name) + b_conv)
+    return (conv_layer, W_conv, b_conv)
+
 
 # takes features and outputs potentials
 def potentials_layer(in_layer, mask, config, params, reuse=False, name='Potentials'):
@@ -119,7 +221,47 @@ def log_pots(un_pots_layer, bin_pots_layer, config, params, name='LogPotentials'
     return pots_layer
 
 
-# pseudo-likelihood criterion
+###################################
+# Objective layers                #
+###################################
+
+
+# Takes a representation as input and returns predictions of tag windows
+def predict_layer(in_layer, config, params, reuse=False, name='Predict'):
+    n_outcomes = config.n_outcomes
+    batch_size = config.batch_size
+    input_size = int(in_layer.get_shape()[2])
+    if reuse:
+        tf.get_variable_scope().reuse_variables()
+        W_pred = params.W_pred
+        b_pred = params.b_pred
+    else:
+        W_pred = weight_variable([input_size, n_outcomes], name=name)
+        b_pred = bias_variable([n_outcomes], name=name)
+        W_pred = tf.clip_by_norm(W_pred, config.param_clip)
+        b_pred = tf.clip_by_norm(b_pred, config.param_clip)
+    flat_input = tf.reshape(in_layer, [-1, input_size])
+    pre_scores = tf.nn.softmax(tf.matmul(flat_input, W_pred) + b_pred)
+    preds_layer = tf.reshape(pre_scores, [batch_size, -1, config.n_tag_windows])
+    return (preds_layer, W_pred, b_pred)
+
+
+# Takes tag window predictions, and returns cross-entropy and accuracy
+def optim_outputs(outcome, targets, config, params):
+    batch_size = int(outcome.get_shape()[0])
+    n_outputs = int(outcome.get_shape()[2])
+    # We are currently using cross entropy as criterion
+    cross_entropy = tf.reduce_sum(targets * tf.log(outcome))
+    # We also compute the per-tag accuracy
+    correct_prediction = tf.equal(tf.argmax(outcome, 2), tf.argmax(targets, 2))
+    accuracy = tf.reduce_sum(tf.cast(correct_prediction,
+                                     "float") * tf.reduce_sum(targets, 2)) /\
+        tf.reduce_sum(targets)
+    return (cross_entropy, accuracy)
+
+
+# Takes potentials and markov blanket indices (pot_indices) and returns
+# the pseudo-likelihood criterion
 def pseudo_likelihood(potentials, pot_indices, targets, config):
     pots_shape = map(int, potentials.get_shape()[2:])
     # make pots
@@ -163,70 +305,7 @@ def pseudo_likelihood(potentials, pot_indices, targets, config):
     return (conditional, p_ll)
 
 
-# dynamic programming part 1: max sum
-class CRFMaxCell(RNNCell):
-    """Dynamic programming for CRF"""
-    def __init__(self, config):
-        self._num_units = config.n_tags ** (config.pot_size - 1)
-        self.n_tags = config.n_tags
-    
-    @property
-    def input_size(self):
-        return self._num_units
-
-    @property
-    def output_size(self):
-        return self._num_units
-    
-    @property
-    def state_size(self):
-        return self._num_units
-    
-    def __call__(self, inputs, state, scope=None):
-        """Summation for dynamic programming. Inputs are the
-        log-potentials. States are the results of the summation at the
-        last step"""
-        with tf.variable_scope(scope or type(self).__name__):
-            # add states and log-potentials
-            multiples = [1] * (len(state.get_shape()) + 1)
-            multiples[-1] = self.n_tags
-            exp_state = tf.tile(tf.expand_dims(state, -1), multiples)
-            added = exp_state + inputs
-            # return maxes, arg_maxes along first dimension (after the batch dim)
-            new_state = tf.reduce_max(added, 1)
-            max_id = tf.argmax(added, 1)
-        return new_state, max_id
-
-
-# max a posteriori tags assignment: implement dynamic programming
-def map_assignment(potentials, config):
-    pots_shape = map(int, potentials.get_shape()[2:])
-    inputs_list = [tf.reshape(x, [config.batch_size] + pots_shape)
-                   for x in tf.split(1, config.num_steps, potentials)]
-    # forward pass
-    max_cell = CRFMaxCell(config)
-    max_ids = [None] * len(inputs_list)
-    # initial state: starts at 0 - 0 - 0 etc...
-    state = tf.zeros(pots_shape[:-1])
-    for t, input_ in enumerate(inputs_list):
-        state, max_id = max_cell(inputs_list[t], state)
-        max_ids[t] = max_id
-    # backward pass
-    powers = tf.to_int64(map(float, range(config.batch_size))) * \
-             (config.n_tags ** (config.pot_size - 1))
-    outputs = [-1] * len(inputs_list)
-    best_end = tf.argmax(tf.reshape(state, [config.batch_size, -1]), 1)
-    current = best_end
-    max_pow = (config.n_tags ** (config.pot_size - 2))
-    for i, _ in enumerate(outputs):
-        outputs[-1 - i] = (current / max_pow) 
-        prev_best = tf.gather(tf.reshape(max_ids[-1 - i], [-1]), current + powers)
-        current = prev_best * max_pow + (current / config.n_tags)
-    map_tags = tf.transpose(tf.pack(outputs))
-    return map_tags
-
-
-# compute the log to get the log-likelihood
+# Takes potentials an returns log-likelihood
 def log_score(potentials, window_indices, mask, config):
     batch_size = int(potentials.get_shape()[0])
     num_steps = int(potentials.get_shape()[1])
@@ -237,18 +316,6 @@ def log_score(potentials, window_indices, mask, config):
     scores = tf.reshape(flat_scores, [batch_size, num_steps])
     scores = tf.mul(scores, mask)
     return tf.reduce_sum(scores)
-
-
-# making a feed dictionary:
-def make_feed_crf(model, batch):
-    f_dict = {model.input_ids: batch.features,
-              model.pot_indices: batch.tag_neighbours_lin,
-              model.window_indices: batch.tag_windows_lin,
-              model.mask: batch.mask,
-              model.targets: batch.tags_one_hot,
-              model.tags: batch.tags,
-              model.nn_targets: batch.tag_windows_one_hot}
-    return f_dict
 
 
 ###################################
