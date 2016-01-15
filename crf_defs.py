@@ -118,9 +118,8 @@ def convo_layer(in_layer, config, params, reuse=False, name='Convo'):
         W_conv = tf.clip_by_norm(W_conv, config.param_clip)
         b_conv = tf.clip_by_norm(b_conv, config.param_clip)
     reshaped = tf.reshape(in_layer, [batch_size, -1, 1, input_size])
-    conv_layer = tf.nn.tanh(tf.reshape(conv2d(reshaped, W_conv),
-                                       [batch_size, -1, output_size],
-                                       name=name) + b_conv)
+    conv_layer = tf.reshape(conv2d(reshaped, W_conv),
+                            [batch_size, -1, output_size], name=name) + b_conv
     return (conv_layer, W_conv, b_conv)
 
 
@@ -364,6 +363,13 @@ class CRF:
                 print('features layer done')
             # convolution
             if config.use_convo:
+                ####### TODO: rewrite
+                (out_layer, W_pre_conv, b_pre_conv) = convo_layer(out_layer,
+                                                                  config,
+                                                                  params)
+                self.l2_norm += L2_norm(W_pre_conv) + L2_norm(b_pre_conv)
+                out_layer = tf.nn.relu(out_layer)
+                ####### /TODO: rewrite
                 (out_layer, W_conv, b_conv) = convo_layer(out_layer, config,
                                                           params, reuse=reuse)
                 params.W_conv = W_conv
@@ -372,6 +378,7 @@ class CRF:
                 self.l2_norm += L2_norm(W_conv) + L2_norm(b_conv)
                 if config.verbose:
                     print('convolution layer done')
+                out_layer = tf.nn.tanh(out_layer)
             self.out_layer = out_layer
             ### SEQU-NN
             if config.nn_obj_weight > 0:

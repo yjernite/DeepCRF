@@ -319,15 +319,16 @@ def tag_dataset(pre_data, config, params, mod_type, model):
 
 # make nice batches
 def prepare_data(data, config):
-	batch_size = config.batch_size
-	missing = (batch_size - (len(data) % batch_size)) % batch_size
-	data_shuff = data[:] + data[-missing:]
-	data_shuff = sorted(data_shuff, key=len)
-	data_batches = [data_shuff[i * batch_size: (i + 1) * batch_size]
-						  for i in range(len(data_shuff) / batch_size)]
-	shuffle(data_batches)
-	data_ready = [x for batch in data_batches for x in batch]
-	return data_ready
+    batch_size = config.batch_size
+    missing = (batch_size - (len(data) % batch_size)) % batch_size
+    data_shuff = data[:] + data[-missing:]
+    shuffle(data_shuff)
+    data_shuff = sorted(data_shuff, key=len)
+    data_batches = [data_shuff[i * batch_size: (i + 1) * batch_size]
+                          for i in range(len(data_shuff) / batch_size)]
+    shuffle(data_batches)
+    data_ready = [x for batch in data_batches for x in batch]
+    return data_ready
 
 
 def train_model(train_data, dev_data, model, config, params, mod_type):
