@@ -5,7 +5,7 @@ from datetime import datetime
 
 from crf_defs import *
 
-config_file = 'Configs/example_config.py'
+config_file = 'Configs/my_config.py'
 config = None
 
 train_file = ''
