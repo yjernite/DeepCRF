@@ -16,9 +16,7 @@ features = ['word', 'lemma', 'pos', 'normal', 'word_length',
             'umls_match_tag_full', 'umls_match_tag_prefix',
             'umls_match_tag_acro', 'label']
 
-input_features = ['lemma', 'prefix', 'suffix', 'pos', 'umls_match_tag_full']
-l1_list = ['lemma', 'prefix', 'suffix']
-tag_list = ['<P>', 'B', 'I', 'O', 'ID', 'OD']
+tag_list = ['<P>', 'B', 'Bp', 'I', 'Ip', 'In', 'ID', 'O', 'OD']
 
 input_features = ['word', 'lemma', 'pos', 'normal', 'word_length',
                   'prefix', 'suffix', 'capitalized', 'word_pos',
@@ -26,15 +24,18 @@ input_features = ['word', 'lemma', 'pos', 'normal', 'word_length',
                   'umls_match_tag_full', 'umls_match_tag_prefix',
                   'umls_match_tag_acro']
 
-l1_list = ['word', 'lemma', 'normal', 'prefix', 'suffix']
-tag_list = ['<P>', 'B', 'Bp', 'I', 'Ip', 'In', 'ID', 'O', 'OD']
 
-config = Config()
+config = Config(input_features=input_features, tag_list=tag_list)
 
-config.learning_rate = 1e-3
+config.l1_list = ['word', 'lemma', 'normal', 'prefix', 'suffix']
+
+config.learning_rate = 5e-3
 config.l2_list = config.input_features
 
-config.gradient_clip = 1
+config.gradient_clip = 5
 config.param_clip = 50
 
 config.num_epochs = 12
+
+config.optimizer = 'adam'
+config.batch_size = 10
