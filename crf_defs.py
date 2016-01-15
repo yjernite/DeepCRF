@@ -41,22 +41,9 @@ def bias_variable(shape, name='weight'):
     return tf.Variable(initial, name=name+'_b')
 
 
-# making a feed dictionary:
-def make_feed_crf(model, batch):
-    f_dict = {model.input_ids: batch.features,
-              model.pot_indices: batch.tag_neighbours_lin,
-              model.window_indices: batch.tag_windows_lin,
-              model.mask: batch.mask,
-              model.targets: batch.tags_one_hot,
-              model.tags: batch.tags,
-              model.nn_targets: batch.tag_windows_one_hot}
-    return f_dict
-
-
 ###################################
 # NN layers                       #
 ###################################
-
 def feature_layer(in_layer, config, params, reuse=False):
     in_features = config.input_features
     features_dim = config.features_dim
@@ -102,11 +89,23 @@ def feature_layer(in_layer, config, params, reuse=False):
     return (embedding_layer, param_vars)
 
 
+# TODO
+def distance_dependent(in_layer, config, params, reuse=False):
+    conv_window = config.conv_window
+    output_size = config.conv_dim
+    batch_size = config.batch_size # int(in_layer.get_shape()[0])
+    input_size = config.features_dim #int(in_layer.get_shape()[2])
+    moved = [0] * conv_window
+    for i in range(conv_window):
+        moved[i] = tf.pad(in_layer, [[0, 0], [i, 0], [0, 0]])
+        moved[i] = tf.slice(moved[i], [0, 0, 0], [-1, -1, -1])
+    
+
+
 def convo_layer(in_layer, config, params, reuse=False, name='Convo'):
     conv_window = config.conv_window
     output_size = config.conv_dim
     batch_size = config.batch_size # int(in_layer.get_shape()[0])
-    num_steps = -1 # int(in_layer.get_shape()[1])
     input_size = config.features_dim #int(in_layer.get_shape()[2])
     if reuse:
         tf.get_variable_scope().reuse_variables()
@@ -118,11 +117,16 @@ def convo_layer(in_layer, config, params, reuse=False, name='Convo'):
         b_conv = bias_variable([output_size], name=name)
         W_conv = tf.clip_by_norm(W_conv, config.param_clip)
         b_conv = tf.clip_by_norm(b_conv, config.param_clip)
-    reshaped = tf.reshape(in_layer, [batch_size, num_steps, 1, input_size])
-    conv_layer = tf.nn.relu(tf.reshape(conv2d(reshaped, W_conv),
-                                       [batch_size, num_steps, output_size],
+    reshaped = tf.reshape(in_layer, [batch_size, -1, 1, input_size])
+    conv_layer = tf.nn.tanh(tf.reshape(conv2d(reshaped, W_conv),
+                                       [batch_size, -1, output_size],
                                        name=name) + b_conv)
     return (conv_layer, W_conv, b_conv)
+
+
+###################################
+# Potentials layers               #
+###################################
 
 
 # takes features and outputs potentials
@@ -324,7 +328,6 @@ def log_score(potentials, window_indices, mask, config):
 class CRF:
     def __init__(self, config):
         self.batch_size = config.batch_size
-        self.num_steps = config.num_steps
         num_features = len(config.input_features)
         # input_ids <- batch.features
         self.input_ids = tf.placeholder(tf.int32)
@@ -445,6 +448,9 @@ class CRF:
                 elif config.optimizer == 'adam':
                     optimizers[k] = tf.train.AdamOptimizer(config.learning_rate,
                                                               name='adam_' + k)
+                else:
+                    optimizers[k] = tf.train.GradientDescentOptimizer(config.learning_rate,
+                                                              name='sgd_' + k)
             grads_and_vars = {}
             # gradient clipping
             for k, crit in self.criteria.items():
@@ -495,7 +501,7 @@ class CRF:
             total_accuracy += dev_accuracy
             total_ll += ll
             total += 1
-            if i % 100 == 0:
+            if i % 100 == 0 and config.verbose:
                 print("%d of %d: \t map acc: %f \t ll:  %f" % (i, len(data) / batch_size,
                                                 total_accuracy / total, total_ll / total))
         return (total_accuracy / total)
