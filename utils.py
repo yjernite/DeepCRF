@@ -24,28 +24,26 @@ def linearize_indices(indices, dims):
 # Data reading functions                      #
 ###############################################
 class Config:
-    def __init__(self, batch_size=20, num_steps=32, learning_rate=1e-2,
-                 l1_reg=1e-2, l1_list=[],
-                 l2_reg=1e-2, l2_list=[],
+    def __init__(self, batch_size=20, learning_rate=1e-2,
+                 l1_reg=1e-2, l1_list=[], l2_reg=1e-2, l2_list=[],
                  nn_obj_weight=-1,
                  optimizer='adam', criterion='likelihood',
                  gradient_clip=1e0, param_clip=1e2,
-                 features_dim=200, init_words=False, input_features=[], combine='sum',
-                 use_rnn=False, rnn_hidden_units=100, rnn_output_size=50,
+                 features_dim=200, init_words=False,
+                 input_features=[], combine='sum',
                  use_convo=True, conv_window=5, conv_dim=200,
                  pot_size=1,
                  pred_window=1, tag_list=[],
                  verbose=False, num_epochs=10, num_predict=5):
         # optimization parameters
         self.batch_size = batch_size
-        self.num_steps = num_steps
         self.learning_rate = learning_rate
         # regularization parameters
         self.l1_reg = l1_reg
         self.l1_list = l1_list
         self.l2_reg = l2_reg
         self.l2_list = l2_list
-        self.nn_obj_weight = nn_obj_weight
+        self.nn_obj_weight = nn_obj_weight  # for mixed training
         # optimization configuration
         self.optimizer = optimizer          # ['adam', 'adagrad']
         self.criterion = criterion          # ['likelihood', 'pseudo_ll']
@@ -56,10 +54,6 @@ class Config:
         self.init_words = init_words
         self.input_features = input_features
         self.combine = combine
-        # recurrent layer
-        self.use_rnn = use_rnn
-        self.rnn_hidden_units = rnn_hidden_units
-        self.rnn_output_size = rnn_output_size
         # convolutional layer
         self.use_convo = use_convo
         self.conv_window = conv_window
@@ -69,6 +63,7 @@ class Config:
         self.n_tags = len(tag_list)
         # output layer
         self.pred_window = pred_window
+        self.n_tag_windows = self.n_tags ** pred_window
         self.tag_list = tag_list
         self.label_dict = {}
         tags_ct = 0
@@ -261,47 +256,6 @@ def read_vectors(file_name, vocab):
     return res
 
 
-# extract windows from data to fit into unrolled RNN. Independent sentences
-def cut_and_pad(data, config):
-    pad_token = dict([(feat, '_unk_') for feat in data[0][0]])
-    pad_token['label'] = '_'.join(['<P>'] * config.pred_window)
-    num_steps = config.num_steps
-    res = []
-    seen = 0
-    pad_len = max(config.pred_window / 2, config.pot_size)
-    sen = [pad_token] * pad_len + data[0] + [pad_token] * pad_len
-    while seen < len(data):
-        if len(sen) < num_steps:
-            if sen[0]['label'] == '<P>':
-                new_sen = ((num_steps - len(sen)) / 2) * [pad_token] + sen
-            else:
-                new_sen = sen
-            new_sen = new_sen + (num_steps - len(new_sen)) * [pad_token]
-            res += [new_sen[:]]
-            seen += 1
-            if seen < len(data):
-                sen = [pad_token] * pad_len + data[seen] + [pad_token] * pad_len
-        else:
-            res += [sen[:num_steps]]
-            sen = sen[(2 * num_steps) / 3:]
-    return res
-
-
-# extract windows from data to fit into unrolled RNN. Continuous model
-def cut_batches(data, config):
-    pad_token = dict([(feat, '_unk_') for feat in data[0][0]])
-    pad_token['label'] = '_'.join(['<P>'] * config.pred_window)
-    padding = [pad_token] * config.pred_window
-    new_data = padding + [tok for sentence in data
-                          for tok in sentence + padding]
-    step_size = (config.num_steps / 2)
-    num_cuts = len(new_data) / step_size
-    res = [new_data[i * step_size: i * step_size + config.num_steps]
-           for i in range(num_cuts)]
-    res[-1] = res[-1] + [pad_token] * (config.num_steps - len(res[-1]))
-    return res
-
-
 # norm functions
 def L1_norm(tensor):
     return tf.reduce_sum(tf.abs(tensor))
@@ -314,6 +268,18 @@ def L2_norm(tensor):
 ###############################################
 # Model use functions                         #
 ###############################################
+# making a feed dictionary:
+def make_feed_crf(model, batch):
+    f_dict = {model.input_ids: batch.features,
+              model.pot_indices: batch.tag_neighbours_lin,
+              model.window_indices: batch.tag_windows_lin,
+              model.mask: batch.mask,
+              model.targets: batch.tags_one_hot,
+              model.tags: batch.tags,
+              model.nn_targets: batch.tag_windows_one_hot}
+    return f_dict
+
+
 # tag a full dataset TODO: ensure compatibility with SequNN class
 def tag_dataset(pre_data, config, params, mod_type, model):
     preds_layer_output = None
@@ -332,7 +298,7 @@ def tag_dataset(pre_data, config, params, mod_type, model):
     print 'processing %d sentences' % ((len(data) / batch_size) * batch_size,)
     for i in range(len(data) / batch_size):
         batch.read(data, i * batch_size, config, fill=True)
-        if i % 100 == 0:
+        if i % 100 == 0 and config.verbose:
             print 'making features', i, 'of', len(data) / batch_size
         n_words = len(batch.features[0])
         if mod_type == 'sequ_nn':
@@ -463,6 +429,8 @@ def tags_to_mentions(tagging):
         if tag in ['In', 'IDn']:
             added += [[i]]
         if tag in ['Ip', 'IDp']:
+            if len(added) == 0:
+                added = [[]]
             added[-1] += [i]
         if tag in ['B', 'O'] and len(core) > 0:
             if len(added) <= 1:
