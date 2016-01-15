@@ -1,23 +1,26 @@
 from pprint import pprint
 import os
 import argparse
+from datetime import datetime
 
-from model_use import *
 from crf_defs import *
 
 config_file = 'Configs/example_config.py'
 config = None
 
+train_file = ''
+dev_file = ''
+features = []
 
 def main():
-    execfile(config_file)
     # load the data
     train_data = read_data(train_file, features, config)
     dev_data = read_data(dev_file, features, config)
     config.make_mappings(train_data + dev_data)
     # initialize the parameters
     if config.init_words:
-        word_vectors = read_vectors(vecs_file, config.feature_maps['word']['reverse'])
+        word_vectors = read_vectors(vecs_file,
+                                    config.feature_maps['word']['reverse'])
         pre_trained = {'word': word_vectors}
     else:
         pre_trained = {}
@@ -27,15 +30,21 @@ def main():
     crf = CRF(config)
     crf.make(config, params_crf)
     sess.run(tf.initialize_all_variables())
-    train_data_32 = cut_and_pad(train_data, config)
+    # (accuracies, preds) = train_model(train_data, dev_data, crf, config, params_crf, 'CRF')
     for i in range(100):
-        shuffle(train_data_32)
-        print 'training', i
-        crf.train_epoch(train_data_32, config, params_crf)
-        print 'tagging', i
-        preds = tag_dataset(dev_data, config, params_crf, 'CRF')
+        print i
+        train_data_ready = prepare_data(train_data, config)
+        dev_data_ready = prepare_data(dev_data, config)
+        print 'training', i, '\t', str(datetime.now())
+        crf.train_epoch(train_data_ready, config, params_crf)
+        print 'validating', i, '\t', str(datetime.now())
+        train_acc = crf.validate_accuracy(train_data_ready, config)
+        dev_acc = crf.validate_accuracy(dev_data_ready, config)
+        print 'train_acc', train_acc, 'dev_acc', dev_acc
+        print 'tagging', i, '\t', str(datetime.now())
+        preds = tag_dataset(dev_data, config, params_crf, 'CRF', crf)
         sentences = preds_to_sentences(preds, config)
-        print 'epoch', i
+        print 'epoch', i, '\t', str(datetime.now())
         evaluate(sentences, 0.5)
 
 
@@ -48,4 +57,5 @@ if __name__ == "__main__":
     if args.config_file:
         config_file = os.path.abspath(args.config_file)
     print 'Starting'
+    execfile(config_file)
     main()
