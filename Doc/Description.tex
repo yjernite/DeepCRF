@@ -41,15 +41,24 @@
 
 \maketitle
 
-\section{Introduction/Reminders}
+\section{Introduction / Reminders}
 
   Our ultimate goal is to identify mentions corresponding to medical problems in text and map them to UMLS CUIs. Our initial two-steps approach was to use a simple CRF for mention detection (step 1), and focus on a more elaborate method to map mentions to CUIs, or even identify mistakes of the detection (step 2).
 
   The reasoning behind this approach was that we felt we could make use of more interesting techniques for the second step, including leveraging MIMIC text for semi-supervised learning, and using the MRF model we developed for our ICML paper as a prior on the CUI distribution. To that end, I built a model predicting a CUI given a mention, its neighbouring words and neighbouring mentions. I first tried to do semi-supervised learning without using the MRF prior by training on MIMIC matches with different kinds of noise. I was unable to get any improvement from the MIMIC data. 
+
+\section{Data Description / State of the Art}
+
+  We are working on the Semeval task for analysis of clinical test. The two most recent editions of the challenge are 2014 \cite{pradhan2014semeval} and 2015 \cite{elhadad298semeval}.
   
-  While there are some things we could try to get this working, I'm very concerned that we won't get any results worth presenting even if we do. Indeed, the best F measure we are currently getting for the {\bf{detection}} step is currently 0.76. To put that in perspective, the best team of the 2015 challenge got a {\bf{global}} F measure of 0.757. The best {\bf{detection}} accuracy of 2014 (numbers were not reported for 2015) is 0.813.
+  The 2014 edition had a training + development set of 298 notes (199 + 99) and a test set of 133 notes. In 2015, these were merged into the training + development set, and 100 notes were added as a test set (we only have access to the 298 + 133, Noemie Elhadad told us the team still had plans for a challenge involving the test set).
   
-  Between that and the fact that we will have to tackle step 1 more satisfactorily anyway if we want to release a tool which people can use, I grew increasingly uneasy with our approach, and finally decided to switch gears to try and improve the detection performance a few weeks ago. I'm describing the methods and current results here.
+  In 2014, the challenge was divided into task 1a (identification of disorder mention span), and task 1b (mapping to UMLS, our step 2). Task 1a was evaluated for F measure, and task 1b for accuracy (recall: number of mentions correctly identified and mapped divided by number of gold mentions). In 2015, both tasks were merged, and only the global F measure was reported.
+
+  The best result for task 1a in 2014 came from the UTH\_CCB team \cite{tang2014uth_ccb}. They achieved an F measure of 81.3 using an ensemble of CRF and Structured SVM, using UMLS, POS, cTakes output, Brown clustering and random indexing features and a \{B, I, O, DB, DI, HB, HI\} tag set. Their F measure on the global task was 71.8 (re-calculated fro their reported ``accuracy'' measure).
+  
+  In 2015, we only have the F measure on the global task for the fifth best team, TAKELAB \cite{glavavstakelab}. Their best development set F measure is 73.0 (with a test set F measure of 72.7). Their system is a CRF with BIO tags, post-processing for disjoint and overlapping mentions, and a set of features including SNOMED similarity and informative ngrams. The best F measure on the 100 notes of the test set (which we do not have access to) was achieved by the ezDI team with 75.7 \cite{pathak2015ezdi}, using a CRF, BIO scheme, parsing and Brown cluster features, and an SVM to re-build disjoint mentions. The UTH\_CCB team was third that year with an F measure of 73.5 on the test set \cite{xu2015uth}.
+  
 
 \section{Related Work}
 
@@ -81,68 +90,7 @@
  \item umls\_match\_tag\_acro
  \end{AutoMultiColItemize}
 
-
- To predict where the mentions are, I approximate the marginal log-probability of a mention by the average marginal log-probability of its component tags (and the one to the right), and threshold on this marginal log-probability. So the probability of having a contiguous mention ranging from token 2 to token 4, for example, is:
- 
- $$\log(p(mention_{(2, 3, 4)})) = \frac{\log(p(B_2) + \log(p(I_3) + \log(p(I_4) + \log(p(B_5 \vee O_5))}{4}$$
-
- The model was trained with the CRF++ package, and achieved an optimal F-measure on the development set of 0.767, for a marginal probability threshold of 0.75.
-
-\subsection{New tagging models}
-
-  I spent the last month or so implementing two other tagging models in TensorFlow (I wanted to learn the language, and it's nice to have something that interfaces easily with Python). The models are a neural network which predicts each tag independently(-ish) given the whole sentence (SequNN), and a hybrid neural network / CRF system (NN-CRF, the CRF potentials are the output of a neural network).
-
-  Both have a first layer which embeds each token of the sentence into a dimension $d$ space. The embedding of a token is the sum of the embeddings of its features. I used a restricted list of features, as it did not look like it affected the performance much:
-  
-  \begin{itemize}
-  \item lemma
-  \item prefix
-  \item suffix
-  \item pos
-  \item umls\_match\_tag\_full
-  \end{itemize}
-  
-  So the embedding of the token {\sl{ complaining: \{lemma: complain, pos: VBG, prefix:com-, suffix, -ing, umls\_match\_tag\_full: O\}}} is:
-  
-  $$w_{complaining} = w_{complain} + w_{VBG} + w_{com-} + w_{-ing} + w_{O}$$
-
- {\bf{Update: Most of those features actually do not make much of a difference, it looks like lemma + umls\_match\_tag\_full is good enough}}.
-
-\subsubsection{SequNN}
-
-  I then tried adding various neural network architectures on top of this first layer, and learning the model with SGD.
-
-  \paragraph{Convolutional layer}
-  
-  My current network actually consists of a single convolutional layer with window size 5, followed by a ReLU. To be perfectly clear, a convolutional window takes a window $(w_{i-2}, w_{i-1}, w_{i}, w_{i+1}, w_{i+2})$, concatenates them into a dimension $5d$ vector, then applies a linear transformation to dimension $d'$. A ReLU is then applied, followed by a linear transformation from $d'$ to the number of tags (5 currently), followed by a Soft-Max. (A picture is on its way)
-
-  \paragraph{Bi-directional LSTM}
-
-  I also implemented a bi-directional LSTM RNN. I couldn't get it to help however (it did worse than the ConvNet on its own, and putting the ConvNet on top of the RNN layer didn't help).
-
-  \paragraph{Prediction targets}
-
-  I then first replaced the marginals of output by the CRF in Section \ref{CRF} by the probabilities output by the NN. However, I could not get past an F-measure of 0.7 with this system.
-  
-  My next step was then to replace the tag prediction layer by a window prediction layer: instead of giving the probability of a tag, the last layer gives the probability of a tag and its left and right neighbour (125 possibilities). This got me back close to the same performance as the CRF (0.763).
-
-\subsubsection{NN-CRF}
-
-  \paragraph{Model}
-
-  I also trained a neural network to output the potentials of a CRF on the tags. The current architecture is basically the same as for the per-tag (per-window) prediction: embedding layer to window 5 convolution to ReLU to pair-wise potentials (5 x 5 matrices).
-
-  \paragraph{Learning} The model is trained by SGD on the joint likelihood of the sequence of tags (inference is pretty fast), and back-propagating from the potentials to the NN parameters. The best F-measure obtained is about the same as the vanilla CRF. I'm hoping to play a bit with the structure and learning parameters to improve that.
-  
-  I also tried pseudo-likelihood learning of the model, but this performed terribly: the prediction of a tag given its neighbours is near perfect (0.997 on training, 0.993 on validation), but the best F-measure is around 0.4.
-
-\subsubsection{Other implementation details}
-
-I use the Adam optimizer with a learning rate of 0.02 for NN-CRF and 0.001 for SequNN (higher leads to gradient explosion), and gradient clipping (I'm not sure it's woking). I have L1 regularization on the lemma embeddings, and L2 regularization on all the embeddings. I need to add L2 regularization to the other embedding. No dropout for now.
-
-\section{Next steps}
-
-\subsection{New tagging scheme}
+\paragraph{Tagging scheme}
 
 The standard mention identification methodology consists in tagging tokens
 with ‘B’ (first token of the mention), ‘I’ (other tokens of the mention) or ‘O’
@@ -176,13 +124,50 @@ left kidney and spleen” will be labeled B-OD-In-Ip-OD-In).
 This scheme uniquely defines all but 0.5\% of our sentences (it still fails in
 the case of nested mentions, which exist but are quite rare).
 
-\subsection{Combining methods}
+ We reconstruct mentions from the MAP assignment of tags. The model was trained with the CRF++ package, and achieved an optimal F-measure on the development set of 0.78.
+
+\subsection{New tagging models}
+
+  I spent the last month or so implementing two other tagging models in TensorFlow (I wanted to learn the language, and it's nice to have something that interfaces easily with Python). The models are a neural network which predicts each tag independently(-ish) given the whole sentence (SequNN), and a hybrid neural network / CRF system (NN-CRF, the CRF potentials are the output of a neural network).
+
+  Both have a first layer which embeds each token of the sentence into a dimension $d$ space. The embedding of a token is the sum of the embeddings of its features. So the embedding of the token {\sl{ complaining: \{lemma: complain, pos: VBG, prefix:com-, suffix, -ing, umls\_match\_tag\_full: O\}}} is:
+  
+  $$w_{complaining} = w_{complain} + w_{VBG} + w_{com-} + w_{-ing} + w_{O}$$
+
+\subsubsection{SequNN}
+
+  I then tried adding various neural network architectures on top of this first layer, and learning the model with SGD.
+
+  \paragraph{Convolutional layer}
+  
+  My current network actually consists of a single convolutional layer with window size 5, followed by a ReLU. To be perfectly clear, a convolutional window takes a window $(w_{i-2}, w_{i-1}, w_{i}, w_{i+1}, w_{i+2})$, concatenates them into a dimension $5d$ vector, then applies a linear transformation to dimension $d'$. A ReLU is then applied, followed by a linear transformation from $d'$ to the number of tags (5 currently), followed by a Soft-Max. (A picture is on its way)
+
+  \paragraph{Bi-directional LSTM}
+
+  I also implemented a bi-directional LSTM RNN. I couldn't get it to help however (it did worse than the ConvNet on its own, and putting the ConvNet on top of the RNN layer didn't help).
+
+  \paragraph{Prediction targets}
+
+  I then first replaced the marginals of output by the CRF in Section \ref{CRF} by the probabilities output by the NN. However, I could not get past an F-measure of 0.7 with this system.
+  
+  My next step was then to replace the tag prediction layer by a window prediction layer: instead of giving the probability of a tag, the last layer gives the probability of a tag and its left and right neighbour (125 possibilities). This got me back close to the same performance as the CRF (0.763).
+
+\subsubsection{NN-CRF}
+
+  \paragraph{Model}
+
+  I also trained a neural network to output the potentials of a CRF on the tags. The current architecture is basically the same as for the per-tag (per-window) prediction: embedding layer to window 5 convolution to ReLU to pair-wise potentials (5 x 5 matrices).
+
+  \paragraph{Learning} The model is trained by SGD on the joint likelihood of the sequence of tags (inference is pretty fast), and back-propagating from the potentials to the NN parameters. The best F-measure obtained is about the same as the vanilla CRF. I'm hoping to play a bit with the structure and learning parameters to improve that.
+  
+  I also tried pseudo-likelihood learning of the model, but this performed terribly: the prediction of a tag given its neighbours is near perfect (0.997 on training, 0.993 on validation), but the best F-measure is around 0.4.
+
+\subsubsection{Other implementation details}
+
+I use the Adam optimizer with a learning rate of 0.02 for NN-CRF and 0.001 for SequNN (higher leads to gradient explosion), and gradient clipping (I'm not sure it's woking). I have L1 regularization on the word, lemma and normalized word embeddings, and L2 regularization on all the embeddings. I need to add L2 regularization to the other embedding. No dropout for now.
 
 
-Taking the average of the marginals output by the two models consistently gets a better max F measure than either of the two, by 1-3 points ()
-
-
-\subsection{Better representation}
+\subsection{Semi-supervised learning}
 
 We could add a language modelling objective to get better embeddings.
 
@@ -192,6 +177,6 @@ Adding pre-trained word embeddings does not help. I have tried both using them a
 
 \nocite{*}
 \bibliography{bibli}{}
-\bibliographystyle{plain}
+\bibliographystyle{abbrv}
 
 \end{document}
