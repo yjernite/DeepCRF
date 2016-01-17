@@ -31,7 +31,7 @@ class Config:
                  gradient_clip=1e0, param_clip=1e2,
                  features_dim=200, init_words=False,
                  input_features=[], combine='sum',
-                 use_convo=True, conv_window=5, conv_dim=200,
+                 use_convo=True, bi_convo=False, conv_window=5, conv_dim=200,
                  pot_size=1,
                  pred_window=1, tag_list=[],
                  verbose=False, num_epochs=10, num_predict=5):

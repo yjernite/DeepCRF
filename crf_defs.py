@@ -363,13 +363,12 @@ class CRF:
                 print('features layer done')
             # convolution
             if config.use_convo:
-                ####### TODO: rewrite
-                (out_layer, W_pre_conv, b_pre_conv) = convo_layer(out_layer,
-                                                                  config,
-                                                                  params)
-                self.l2_norm += L2_norm(W_pre_conv) + L2_norm(b_pre_conv)
-                out_layer = tf.nn.relu(out_layer)
-                ####### /TODO: rewrite
+                if config.bi_convo:
+                    (out_layer, W_pre_conv, b_pre_conv) = convo_layer(out_layer,
+                                                                      config,
+                                                                      params)
+                    self.l2_norm += L2_norm(W_pre_conv) + L2_norm(b_pre_conv)
+                    out_layer = tf.nn.relu(out_layer)
                 (out_layer, W_conv, b_conv) = convo_layer(out_layer, config,
                                                           params, reuse=reuse)
                 params.W_conv = W_conv
