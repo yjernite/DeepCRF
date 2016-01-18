@@ -186,11 +186,7 @@ I use the Adam optimizer with a learning rate of 0.02 for NN-CRF and 0.001 for S
 
 \subsection{Semi-supervised learning}
 
-We could add a language modelling objective to get better embeddings.
-
-We could train the first layer(s) (representation and maybe convolution) jointly.
-
-Adding pre-trained word embeddings does not help. I have tried both using them as is, and adding a trainable projection.
+The next step is to use MIMIC to get better feature embeddings. Our idea is to learn word embeddings to predict the presence of exact matches from UMLS.
 
 \nocite{*}
 \bibliography{bibli}{}
