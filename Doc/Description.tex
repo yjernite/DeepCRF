@@ -29,7 +29,7 @@
 }
 \makeatother    
 \newenvironment{AutoMultiColItemize}{%
-\ifnumcomp{\nextitemizecount}{>}{3}{\begin{multicols}{2}}{}%
+\ifnumcomp{\nextitemizecount}{>}{3}{\begin{multicols}{3}}{}%
 \setupcountitems\begin{itemize}}%
 {\end{itemize}%
 \unskip\computecountitems\ifnumcomp{\previtemizecount}{>}{3}{\end{multicols}}{}}
@@ -59,6 +59,8 @@
   
   In 2015, we only have the F measure on the global task for the fifth best team, TAKELAB \cite{glavavstakelab}. Their best development set F measure is 73.0 (with a test set F measure of 72.7). Their system is a CRF with BIO tags, post-processing for disjoint and overlapping mentions, and a set of features including SNOMED similarity and informative ngrams. The best F measure on the 100 notes of the test set (which we do not have access to) was achieved by the ezDI team with 75.7 \cite{pathak2015ezdi}, using a CRF, BIO scheme, parsing and Brown cluster features, and an SVM to re-build disjoint mentions. The UTH\_CCB team was third that year with an F measure of 73.5 on the test set \cite{xu2015uth}.
   
+  AS for matching schemes, most works use some form of edit distance (TODO).
+  
 
 \section{Related Work}
 
@@ -80,7 +82,7 @@ For mapping:
 \subsection{CRF}
 \label{CRF}
 
- We were previously using a CRF with the following features (and combinations thereof):
+ Our baseline is a CRF with the following features (and combinations thereof):
 
  \begin{AutoMultiColItemize}
  \item word
@@ -135,11 +137,11 @@ left kidney and spleen” will be labeled B-OD-In-Ip-OD-In).
 This scheme uniquely defines all but 0.5\% of our sentences (it still fails in
 the case of nested mentions, which exist but are quite rare).
 
- We reconstruct mentions from the MAP assignment of tags. The model was trained with the CRF++ package, and achieved an optimal F-measure on the development set of 0.78.
+ We reconstruct mentions from the MAP assignment of tags. The model was trained with the CRF++ package, and achieved an optimal F-measure on the development set (133 notes) of 0.78.
 
 \subsection{New tagging models}
 
-  I spent the last month or so implementing two other tagging models in TensorFlow (I wanted to learn the language, and it's nice to have something that interfaces easily with Python). The models are a neural network which predicts each tag independently(-ish) given the whole sentence (SequNN), and a hybrid neural network / CRF system (NN-CRF, the CRF potentials are the output of a neural network).
+  We implemented two other models using TensorFlow: a neural network which predicts each tag independently(-ish) given the whole sentence (SequNN), and a hybrid neural network / CRF system (NN-CRF, the CRF potentials are the output of a neural network).
 
   Both have a first layer which embeds each token of the sentence into a dimension $d$ space. The embedding of a token is the sum of the embeddings of its features. So the embedding of the token {\sl{ complaining: \{lemma: complain, pos: VBG, prefix:com-, suffix, -ing, umls\_match\_tag\_full: O\}}} is:
   
@@ -147,7 +149,7 @@ the case of nested mentions, which exist but are quite rare).
 
 \subsubsection{SequNN}
 
-  I then tried adding various neural network architectures on top of this first layer, and learning the model with SGD.
+  I tried adding various neural network architectures on top of the embedding layer, and learning the model with SGD.
 
   \paragraph{Convolutional layer}
   
@@ -167,16 +169,20 @@ the case of nested mentions, which exist but are quite rare).
 
   \paragraph{Model}
 
-  I also trained a neural network to output the potentials of a CRF on the tags. The current architecture is basically the same as for the per-tag (per-window) prediction: embedding layer to window 5 convolution to ReLU to pair-wise potentials (5 x 5 matrices).
+  I also trained a neural network to output the potentials of a CRF on the tags. The current architecture is basically the same as for the per-tag (per-window) prediction: embedding layer to window 5 convolution to tanh to pair-wise potentials (5 x 5 matrices for binary potentials, and unary potentials).
 
-  \paragraph{Learning} The model is trained by SGD on the joint likelihood of the sequence of tags (inference is pretty fast), and back-propagating from the potentials to the NN parameters. The best F-measure obtained is about the same as the vanilla CRF. I'm hoping to play a bit with the structure and learning parameters to improve that.
+  \paragraph{Learning} 
   
-  I also tried pseudo-likelihood learning of the model, but this performed terribly: the prediction of a tag given its neighbours is near perfect (0.997 on training, 0.993 on validation), but the best F-measure is around 0.4.
+  The model is trained by SGD on the joint likelihood of the sequence of tags (inference is pretty fast), and back-propagating from the potentials to the NN parameters. The best F-measure obtained is about the same as the vanilla CRF. I'm hoping to play a bit with the structure and learning parameters to improve that.
+
+\begin{figure}[h]  
+\includegraphics[width=\textwidth]{NN-CRF.pdf}
+\caption{NN-CRF model}
+\end{figure}
 
 \subsubsection{Other implementation details}
 
-I use the Adam optimizer with a learning rate of 0.02 for NN-CRF and 0.001 for SequNN (higher leads to gradient explosion), and gradient clipping (I'm not sure it's woking). I have L1 regularization on the word, lemma and normalized word embeddings, and L2 regularization on all the embeddings. I need to add L2 regularization to the other embedding. No dropout for now.
-
+I use the Adam optimizer with a learning rate of 0.02 for NN-CRF and 0.001 for SequNN, and gradient clipping. I have L1 regularization on the word, lemma and normalized word embeddings, and L2 regularization on all the embeddings. No dropout for now.
 
 \subsection{Semi-supervised learning}
 
