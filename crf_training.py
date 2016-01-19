@@ -31,7 +31,7 @@ def main():
     crf.make(config, params_crf)
     sess.run(tf.initialize_all_variables())
     # (accuracies, preds) = train_model(train_data, dev_data, crf, config, params_crf, 'CRF')
-    for i in range(100):
+    for i in range(config.num_epochs):
         print i
         train_data_ready = prepare_data(train_data, config)
         dev_data_ready = prepare_data(dev_data, config)
@@ -42,9 +42,13 @@ def main():
         dev_acc = crf.validate_accuracy(dev_data_ready, config)
         print 'train_acc', train_acc, 'dev_acc', dev_acc
         print 'tagging', i, '\t', str(datetime.now())
+        preds = tag_dataset(train_data, config, params_crf, 'CRF', crf)
+        sentences = preds_to_sentences(preds, config)
+        print 'train epoch', i, '\t', str(datetime.now())
+        evaluate(sentences, 0.5)
         preds = tag_dataset(dev_data, config, params_crf, 'CRF', crf)
         sentences = preds_to_sentences(preds, config)
-        print 'epoch', i, '\t', str(datetime.now())
+        print 'dev epoch', i, '\t', str(datetime.now())
         evaluate(sentences, 0.5)
 
 

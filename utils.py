@@ -56,6 +56,7 @@ class Config:
         self.combine = combine
         # convolutional layer
         self.use_convo = use_convo
+        self.bi_convo = bi_convo
         self.conv_window = conv_window
         self.conv_dim = conv_dim
         # CRF parameters:
@@ -258,11 +259,12 @@ def read_vectors(file_name, vocab):
 
 # norm functions
 def L1_norm(tensor):
-    return tf.reduce_sum(tf.abs(tensor))
+    return tf.reduce_sum(tf.sqrt(tf.reduce_sum(tf.mul(tensor, tensor), 1)))
+    #return tf.reduce_sum(tf.abs(tensor))
 
 
 def L2_norm(tensor):
-    return tf.reduce_sum(tf.mul(tensor, tensor))
+    return tf.sqrt(tf.reduce_sum(tf.mul(tensor, tensor)))
 
 
 ###############################################

@@ -373,7 +373,6 @@ class CRF:
                                                           params, reuse=reuse)
                 params.W_conv = W_conv
                 params.b_conv = b_conv
-                # self.l1_norm += L1_norm(W_conv) + L1_norm(b_conv)
                 self.l2_norm += L2_norm(W_conv) + L2_norm(b_conv)
                 if config.verbose:
                     print('convolution layer done')
@@ -385,7 +384,6 @@ class CRF:
                                                               params, reuse=reuse)
                 params.W_pred = W_pred
                 params.b_pred = b_pred
-                # self.l1_norm += L1_norm(W_pred) + L1_norm(b_pred)
                 self.l2_norm += L2_norm(W_pred) + L2_norm(b_pred)
                 self.preds_layer = preds_layer
                 (cross_entropy, accu_nn) = optim_outputs(preds_layer,
@@ -462,7 +460,8 @@ class CRF:
             for k, crit in self.criteria.items():
                 uncapped_g_v = optimizers[k].compute_gradients(crit,
                                                                tf.trainable_variables())
-                grads_and_vars[k] = [(tf.clip_by_norm(g, config.gradient_clip), v) if g else (g, v)
+                grads_and_vars[k] = [(tf.clip_by_norm(g, config.gradient_clip), v) \
+                                     if g and config.gradient_clip > 0 else (g, v)
                                      for g, v in uncapped_g_v]
             self.train_steps = {}
             for k, g_v in grads_and_vars.items():
